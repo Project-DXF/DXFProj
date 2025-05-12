@@ -1,22 +1,23 @@
 # Core dependencies
-ezdxf>=1.0.0       # DXF file handling
-numpy>=1.20.0      # Numerical computations
-matplotlib>=3.5.0  # Basic plotting
-scipy>=1.7.0       # Scientific computing (for feature extraction)
+ezdxf>=1.4.1       # DXF file handling
+numpy>=2.2.5      # Numerical computations
+matplotlib>=3.10.3  # Basic plotting
+scipy>=1.15.3       # Scientific computing (for feature extraction)
 
 # GUI dependencies
-PyQt5>=5.15.0      # Main GUI framework
-pyqtgraph>=0.12.0  # Fast plotting for DXF visualization
+PyQt5>=5.15.11      # Main GUI framework
+pyqtgraph>=0.13.7  # Fast plotting for DXF visualization
 
 # Image processing
-opencv-python>=4.5.0  # For image-based comparison
-scikit-image>=0.18.0  # Advanced image processing
+# opencv-python>=4.5.0  # For image-based comparison
+# scikit-image>=0.18.0  # Advanced image processing
 
 # Machine learning dependencies (for later phases)
 # scikit-learn>=1.0.0  # Basic machine learning
 # tensorflow>=2.7.0    # Advanced machine learning (if needed)
 
 # Database
+postgres >=4.0
 # sqlalchemy>=1.4.0    # Database ORM
 # pymongo>=4.0.0       # MongoDB client (if using NoSQL)
 
