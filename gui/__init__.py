@@ -3,9 +3,442 @@ import os
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QLabel, QComboBox, QFileDialog, QTabWidget, 
                              QTextEdit, QGroupBox, QGridLayout, QMessageBox, QSplitter,
-                             QCheckBox)
-from PyQt5.QtGui import QFont, QIcon, QPalette, QColor, QPixmap
-from PyQt5.QtCore import Qt, QSize
+                             QCheckBox, QGraphicsView, QGraphicsScene, QGraphicsItem,
+                             QDialog, QShortcut, QToolBar, QAction, QGraphicsProxyWidget)
+from PyQt5.QtGui import QFont, QIcon, QPalette, QColor, QPixmap, QPen, QBrush, QKeySequence, QTransform, QPainter
+from PyQt5.QtCore import Qt, QSize, QRectF, QPointF
+import ezdxf
+from ezdxf.addons.drawing import Frontend, RenderContext
+from ezdxf.addons.drawing.pyqt import PyQtBackend
+
+class DXFViewer(QDialog):
+    def __init__(self, parent=None, dxf_file=None, dark_mode=False):
+        super().__init__(parent)
+        self.dark_mode = dark_mode
+        self.setWindowTitle("DXF Viewer")
+        self.setGeometry(100, 100, 800, 600)
+        self.dxf_file = dxf_file
+        
+        # Set up the layout
+        main_layout = QVBoxLayout(self)
+        
+        # Create toolbar
+        toolbar = QToolBar()
+        
+        # Add zoom in/out buttons
+        zoom_in_action = QAction(QIcon.fromTheme("zoom-in", QIcon()), "Zoom In", self)
+        zoom_in_action.triggered.connect(self.zoom_in)
+        toolbar.addAction(zoom_in_action)
+        
+        zoom_out_action = QAction(QIcon.fromTheme("zoom-out", QIcon()), "Zoom Out", self)
+        zoom_out_action.triggered.connect(self.zoom_out)
+        toolbar.addAction(zoom_out_action)
+        
+        toolbar.addSeparator()
+        
+        # Add fit to view button
+        fit_action = QAction(QIcon.fromTheme("zoom-fit-best", QIcon()), "Fit to View", self)
+        fit_action.triggered.connect(self.fit_to_view)
+        toolbar.addAction(fit_action)
+        
+        main_layout.addWidget(toolbar)
+        
+        # Create graphics view for the DXF display
+        self.graphics_view = QGraphicsView()
+        self.graphics_view.setRenderHint(QPainter.Antialiasing)
+        self.graphics_view.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.graphics_view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.graphics_view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+        self.graphics_view.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
+        self.graphics_view.setBackgroundBrush(QBrush(
+            QColor(self.parent().colors['background'].name())
+        ))
+        
+        self.graphics_scene = QGraphicsScene()
+        self.graphics_view.setScene(self.graphics_scene)
+        
+        main_layout.addWidget(self.graphics_view)
+        
+        # Set up keyboard shortcuts
+        QShortcut(QKeySequence.ZoomIn, self, self.zoom_in)
+        QShortcut(QKeySequence.ZoomOut, self, self.zoom_out)
+        QShortcut(QKeySequence("Ctrl+0"), self, self.fit_to_view)
+        QShortcut(QKeySequence(Qt.Key_Escape), self, self.close)
+        
+        # Load the DXF file if provided
+        if self.dxf_file:
+            self.load_dxf(self.dxf_file)
+            
+        # Apply theme
+        self.apply_theme()
+        
+    def apply_theme(self):
+        """Apply the current theme to the dialog"""
+        # Get colors from parent
+        colors = self.parent().colors
+        
+        # Set up the stylesheet
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {colors['background'].name()};
+                color: {colors['text'].name()};
+            }}
+            
+            QToolBar {{
+                background-color: {colors['surface'].name()};
+                border: 1px solid {'#555' if self.dark_mode else '#ddd'};
+                spacing: 5px;
+                padding: 2px;
+            }}
+            
+            QToolBar QToolButton {{
+                background-color: {colors['primary'].name()};
+                color: white;
+                border-radius: 4px;
+                padding: 4px;
+                margin: 2px;
+            }}
+            
+            QToolBar QToolButton:hover {{
+                background-color: {colors['secondary'].name()};
+            }}
+            
+            QGraphicsView {{
+                border: 1px solid {'#555' if self.dark_mode else '#ddd'};
+                background-color: {colors['surface'].name()};
+                color: {'#000' if not self.dark_mode else '#fff'};
+            }}
+        """)
+        
+    def load_dxf(self, filename):
+        """Load and render a DXF file"""
+        self.dxf_file = filename
+        self.setWindowTitle(f"DXF Viewer - {os.path.basename(filename)}")
+        self.graphics_scene.clear()
+        
+        try:
+            # Print debug info
+            print(f"Loading DXF in popup viewer: {filename}")
+            
+            # Load the DXF file
+            doc = ezdxf.readfile(filename)
+            
+            # Count entities
+            msp = doc.modelspace()
+            entity_count = sum(1 for _ in msp)
+            print(f"Fullscreen viewer entity count: {entity_count}")
+            
+            # Set up render context with default config
+            context = RenderContext(doc)
+            backend = PyQtBackend(self.graphics_scene)
+            frontend = Frontend(context, backend)
+            
+            # Render the model space entities
+            frontend.draw_layout(doc.modelspace())
+            
+            # Check if we have items in the scene
+            item_count = len(self.graphics_scene.items()) 
+            print(f"Fullscreen graphics scene items: {item_count}")
+            
+            if item_count == 0:
+                self.show_error_message("DXF file loaded but no visible entities found")
+                return
+                
+            # Make sure we can see the content (reset view transforms)
+            self.graphics_view.resetTransform()
+            
+            # Get the bounding rectangle
+            bounds = self.graphics_scene.itemsBoundingRect()
+            print(f"Fullscreen scene bounds: {bounds}")
+            
+            if bounds.width() < 1 or bounds.height() < 1:
+                print("Warning: Very small or invalid bounding box in fullscreen view")
+                # Set a minimum size to avoid scaling issues
+                bounds = QRectF(bounds.x(), bounds.y(), max(bounds.width(), 10), max(bounds.height(), 10))
+            
+            # Update the scene rect to match the bounds
+            self.graphics_scene.setSceneRect(bounds.adjusted(-10, -10, 10, 10))
+            
+            # Fit everything into view with a margin
+            self.graphics_view.fitInView(bounds.adjusted(-5, -5, 5, 5), Qt.KeepAspectRatio)
+            
+            # Force update
+            self.graphics_view.update()
+            
+        except Exception as e:
+            print(f"Error loading DXF in fullscreen: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            self.show_error_message(f"Failed to load DXF file: {str(e)}")
+    
+    def show_error_message(self, message):
+        """Show an error message in a QMessageBox"""
+        QMessageBox.critical(self, "Error", message)
+    
+    def zoom_in(self):
+        """Zoom in by scaling the view"""
+        self.graphics_view.scale(1.2, 1.2)
+        
+    def zoom_out(self):
+        """Zoom out by scaling the view"""
+        self.graphics_view.scale(1/1.2, 1/1.2)
+        
+    def fit_to_view(self):
+        """Fit the entire drawing to the view"""
+        bounds = self.graphics_scene.itemsBoundingRect()
+        if not bounds.isEmpty():
+            # Add a small margin around the content
+            self.graphics_view.fitInView(bounds.adjusted(-5, -5, 5, 5), Qt.KeepAspectRatio)
+        
+    def wheelEvent(self, event):
+        """Handle mouse wheel events for zooming"""
+        if event.angleDelta().y() > 0:
+            self.zoom_in()
+        else:
+            self.zoom_out()
+
+    def resizeEvent(self, event):
+        """Handle resize events to keep the drawing properly scaled"""
+        super().resizeEvent(event)
+        QApplication.processEvents()  # Make sure the resize is processed
+        if self.dxf_file and not self.graphics_scene.items() == []:
+            # Refit the view when the dialog is resized
+            self.fit_to_view()
+            
+    def showEvent(self, event):
+        """Handle show events to ensure the drawing is properly displayed"""
+        super().showEvent(event)
+        QApplication.processEvents()  # Make sure the show is processed
+        if self.dxf_file and not self.graphics_scene.items() == []:
+            # Fit the view when the dialog is shown
+            self.fit_to_view()
+
+class CADWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.current_dxf = None
+        self.placeholder_label = None
+        
+        # Create layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Add controls at the top
+        controls_layout = QHBoxLayout()
+        controls_layout.setAlignment(Qt.AlignRight)
+        
+        # Create expand button
+        self.expand_btn = QPushButton()
+        self.expand_btn.setIcon(QIcon('gui/expand_icon.png'))
+        self.expand_btn.setToolTip("View in Full Screen")
+        self.expand_btn.clicked.connect(self.open_fullscreen)
+        self.expand_btn.setFixedSize(32, 32)
+        self.expand_btn.setEnabled(False)  # Disabled until a DXF is loaded
+        controls_layout.addWidget(self.expand_btn)
+        
+        layout.addLayout(controls_layout)
+        
+        # Create the graphics view for the DXF
+        self.graphics_view = QGraphicsView()
+        self.graphics_view.setRenderHint(QPainter.Antialiasing)
+        self.graphics_view.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.graphics_view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.graphics_view.setBackgroundBrush(QBrush(
+            QColor(self.parent.colors['background'].name())
+        ))
+        
+        self.graphics_scene = QGraphicsScene()
+        self.graphics_view.setScene(self.graphics_scene)
+        
+        layout.addWidget(self.graphics_view)
+        
+        # Add placeholder text when no DXF is loaded
+        self.add_placeholder("No DXF loaded\nUse 'Upload DXF' to load a file")
+        
+    def add_placeholder(self, text, is_error=False):
+        """Add a placeholder text to the graphics scene"""
+        # Clear any existing placeholder
+        if self.placeholder_label is not None:
+            self.graphics_scene.removeItem(self.graphics_scene.items()[-1])
+            self.placeholder_label = None
+            
+        # Create new placeholder
+        self.placeholder_label = QLabel(text)
+        self.placeholder_label.setAlignment(Qt.AlignCenter)
+        self.placeholder_label.setStyleSheet(f"""
+            color: {self.parent.colors['error' if is_error else 'text_light'].name()};
+            font-size: 14px;
+            background: transparent;
+        """)
+        self.graphics_scene.addWidget(self.placeholder_label)
+        
+    def load_dxf(self, filename):
+        """Load and render a DXF file"""
+        self.current_dxf = filename
+        
+        # Completely clear the scene
+        self.graphics_scene.clear()
+        self.placeholder_label = None
+        
+        try:
+            # Print debug info
+            print(f"Loading DXF: {filename}")
+            
+            # Load the DXF file
+            doc = ezdxf.readfile(filename)
+            
+            # Count entities
+            msp = doc.modelspace()
+            entity_count = sum(1 for _ in msp)
+            print(f"Entity count: {entity_count}")
+            
+            # Extract DXF information
+            info = self.extract_dxf_info(doc)
+            
+            # Set up render context with default config
+            context = RenderContext(doc)
+            backend = PyQtBackend(self.graphics_scene)
+            frontend = Frontend(context, backend)
+            
+            # Render the model space entities
+            frontend.draw_layout(doc.modelspace())
+            
+            # Check if we have items in the scene
+            item_count = len(self.graphics_scene.items()) 
+            print(f"Graphics scene items: {item_count}")
+            
+            if item_count == 0:
+                self.add_placeholder("DXF file loaded but no visible entities found", True)
+                return False
+                
+            # Enable the expand button
+            self.expand_btn.setEnabled(True)
+            
+            # Make sure we can see the content (reset view transforms)
+            self.graphics_view.resetTransform()
+            
+            # Get the bounding rectangle
+            bounds = self.graphics_scene.itemsBoundingRect()
+            print(f"Scene bounds: {bounds}")
+            
+            if bounds.width() < 1 or bounds.height() < 1:
+                print("Warning: Very small or invalid bounding box")
+                # Set a minimum size to avoid scaling issues
+                bounds = QRectF(bounds.x(), bounds.y(), max(bounds.width(), 10), max(bounds.height(), 10))
+            
+            # Update the scene rect to match the bounds
+            self.graphics_scene.setSceneRect(bounds.adjusted(-10, -10, 10, 10))
+            
+            # Fit everything into view with a margin
+            self.graphics_view.fitInView(bounds.adjusted(-5, -5, 5, 5), Qt.KeepAspectRatio)
+            
+            # Force update
+            self.graphics_view.update()
+            
+            # Return the info dict if successful
+            return info
+            
+        except Exception as e:
+            print(f"Error loading DXF: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            # Add the placeholder back
+            self.add_placeholder(f"Failed to load DXF file: {str(e)}", True)
+            
+            # Return False if failed
+            return False
+    
+    def extract_dxf_info(self, doc):
+        """Extract basic information from a DXF document"""
+        info = {}
+        
+        # Get DXF version
+        info['DXF Version'] = doc.dxfversion
+        
+        # Get drawing units
+        units = {
+            0: 'Unitless',
+            1: 'Inches',
+            2: 'Feet',
+            3: 'Miles',
+            4: 'Millimeters',
+            5: 'Centimeters',
+            6: 'Meters',
+            7: 'Kilometers',
+            8: 'Microinches',
+            9: 'Mils',
+            10: 'Yards',
+            11: 'Angstroms',
+            12: 'Nanometers',
+            13: 'Microns',
+            14: 'Decimeters',
+            15: 'Decameters',
+            16: 'Hectometers',
+            17: 'Gigameters',
+            18: 'Astronomical Units',
+            19: 'Light Years',
+            20: 'Parsecs'
+        }
+        try:
+            unit = doc.header.get('$INSUNITS', 0)
+            info['Units'] = units.get(unit, 'Unknown')
+        except:
+            info['Units'] = 'Unknown'
+        
+        # Count entities in model space
+        msp = doc.modelspace()
+        entity_counts = {}
+        
+        for entity in msp:
+            entity_type = entity.dxftype()
+            entity_counts[entity_type] = entity_counts.get(entity_type, 0) + 1
+        
+        info['Entity Counts'] = entity_counts
+        
+        # Get extents if available
+        try:
+            extmin = doc.header.get('$EXTMIN')
+            extmax = doc.header.get('$EXTMAX')
+            if extmin and extmax:
+                width = extmax[0] - extmin[0]
+                height = extmax[1] - extmin[1]
+                info['Width'] = f"{width:.2f}"
+                info['Height'] = f"{height:.2f}"
+                info['Area'] = f"{width * height:.2f}"
+        except:
+            pass
+        
+        return info
+    
+    def open_fullscreen(self):
+        """Open the full screen DXF viewer"""
+        if self.current_dxf:
+            viewer = DXFViewer(self.parent, self.current_dxf, self.parent.dark_mode)
+            viewer.exec_()
+
+    def resizeEvent(self, event):
+        """Handle resize events to keep the drawing properly scaled"""
+        super().resizeEvent(event)
+        QApplication.processEvents()  # Make sure the resize is processed
+        self.refresh_view()
+            
+    def showEvent(self, event):
+        """Handle show events to ensure the drawing is properly displayed"""
+        super().showEvent(event)
+        QApplication.processEvents()  # Make sure the show is processed
+        self.refresh_view()
+    
+    def refresh_view(self):
+        """Refresh the view to ensure the drawing is properly displayed"""
+        if self.current_dxf and not self.graphics_scene.items() == []:
+            # Get the bounding rectangle
+            bounds = self.graphics_scene.itemsBoundingRect()
+            if not bounds.isEmpty():
+                # Add a small margin and fit to view
+                self.graphics_view.fitInView(bounds.adjusted(-5, -5, 5, 5), Qt.KeepAspectRatio)
+                print(f"View refreshed with bounds: {bounds}")
 
 class DXFProfileAnalyzer(QMainWindow):
     def __init__(self):
@@ -43,18 +476,21 @@ class DXFProfileAnalyzer(QMainWindow):
         main_layout.addWidget(top_control)
 
         # Create main tab widget
-        tab_widget = QTabWidget()
-        tab_widget.setDocumentMode(True)
-        tab_widget.setTabPosition(QTabWidget.North)
-        tab_widget.setMovable(True)
-        main_layout.addWidget(tab_widget)
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setDocumentMode(True)
+        self.tab_widget.setTabPosition(QTabWidget.North)
+        self.tab_widget.setMovable(True)
+        main_layout.addWidget(self.tab_widget)
 
         # Add tabs
-        tab_widget.addTab(self.create_cad_viewer_tab(), "CAD Viewer")
-        tab_widget.addTab(self.create_feature_comparison_tab(), "Feature Comparison")
-        tab_widget.addTab(self.create_image_comparison_tab(), "Image Comparison")
-        tab_widget.addTab(self.create_best_match_tab(), "Best Match")
-        tab_widget.addTab(self.create_die_prediction_tab(), "Die Prediction")
+        self.tab_widget.addTab(self.create_cad_viewer_tab(), "CAD Viewer")
+        self.tab_widget.addTab(self.create_feature_comparison_tab(), "Feature Comparison")
+        self.tab_widget.addTab(self.create_image_comparison_tab(), "Image Comparison")
+        self.tab_widget.addTab(self.create_best_match_tab(), "Best Match")
+        self.tab_widget.addTab(self.create_die_prediction_tab(), "Die Prediction")
+        
+        # Select the CAD Viewer tab by default
+        self.tab_widget.setCurrentIndex(0)
 
         # Status bar
         self.statusBar().showMessage('Ready')
@@ -133,6 +569,7 @@ class DXFProfileAnalyzer(QMainWindow):
             
             QPushButton:hover {{
                 background-color: {self.colors['secondary'].name()};
+                border: 1px solid {self.colors['primary'].name()};
             }}
             
             QPushButton:pressed {{
@@ -236,6 +673,23 @@ class DXFProfileAnalyzer(QMainWindow):
                     padding: 8px 16px;
                 """)
         
+        # Update CAD widget if it exists
+        if hasattr(self, 'cad_widget') and self.cad_widget:
+            # Update graphics view background
+            self.cad_widget.graphics_view.setBackgroundBrush(QBrush(
+                QColor(self.colors['background'].name())
+            ))
+            
+            # Update placeholder text color
+            for item in self.cad_widget.graphics_scene.items():
+                if isinstance(item, QGraphicsProxyWidget):
+                    widget = item.widget()
+                    if isinstance(widget, QLabel):
+                        widget.setStyleSheet(f"""
+                            color: {self.colors['text_light'].name()};
+                            font-size: 14px;
+                """)
+        
         # We need to refresh the UI to make sure all changes are applied
         self.repaint()
 
@@ -294,22 +748,14 @@ class DXFProfileAnalyzer(QMainWindow):
         layout.setSpacing(15)
         layout.setContentsMargins(15, 15, 15, 15)
         
-        # Placeholder for CAD Viewer (could be replaced with actual viewer)
+        # CAD Viewer Group
         cad_group = QGroupBox("CAD View")
         cad_layout = QVBoxLayout()
         
-        cad_label = QLabel("CAD Viewer Placeholder")
-        cad_label.setAlignment(Qt.AlignCenter)
-        cad_label.setStyleSheet(f"""
-            background-color: {'#3a3a3a' if self.dark_mode else '#f8f9fa'};
-            border: 1px dashed {'#555' if self.dark_mode else '#ddd'};
-            border-radius: 4px;
-            padding: 40px;
-            font-size: 14px;
-            color: {self.colors['text_light'].name()};
-        """)
-        cad_label.setMinimumHeight(300)
-        cad_layout.addWidget(cad_label)
+        # Create our custom CAD viewer widget
+        self.cad_widget = CADWidget(self)
+        cad_layout.addWidget(self.cad_widget)
+        
         cad_group.setLayout(cad_layout)
         layout.addWidget(cad_group)
 
@@ -321,19 +767,19 @@ class DXFProfileAnalyzer(QMainWindow):
         sketch_layout = QHBoxLayout()
         sketch_label = QLabel("Sketch Number:")
         sketch_label.setFont(QFont("Segoe UI", 10, QFont.Bold))
-        sketch_display = QLabel("---")
-        sketch_display.setStyleSheet(f"color: {self.colors['primary'].name()};")
+        self.sketch_display = QLabel("---")
+        self.sketch_display.setStyleSheet(f"color: {self.colors['primary'].name()};")
         sketch_layout.addWidget(sketch_label)
-        sketch_layout.addWidget(sketch_display)
+        sketch_layout.addWidget(self.sketch_display)
         sketch_layout.addStretch()
         info_layout.addLayout(sketch_layout)
 
         # Calculated Parameters Display
-        params_text = QTextEdit()
-        params_text.setReadOnly(True)
-        params_text.setMaximumHeight(150)
-        params_text.setPlaceholderText("Profile parameters will be displayed here")
-        info_layout.addWidget(params_text)
+        self.params_text = QTextEdit()
+        self.params_text.setReadOnly(True)
+        self.params_text.setMaximumHeight(150)
+        self.params_text.setPlaceholderText("Profile parameters will be displayed here")
+        info_layout.addWidget(self.params_text)
         
         info_group.setLayout(info_layout)
         layout.addWidget(info_group)
@@ -611,9 +1057,57 @@ class DXFProfileAnalyzer(QMainWindow):
 
     # Placeholder methods for button actions
     def upload_dxf(self):
-        filename, _ = QFileDialog.getOpenFileName(self, "Upload DXF", "", "DXF Files (*.dxf)")
-        if filename:
-            self.statusBar().showMessage(f'Uploaded: {filename}')
+        """Upload and display a DXF file"""
+        # Select DXF file with dialog
+        filename, _ = QFileDialog.getOpenFileName(
+            self, 
+            "Upload DXF", 
+            os.path.join(os.getcwd(), "DXF/Edited"),  # Start in the DXF folder if it exists
+            "DXF Files (*.dxf)"
+        )
+        
+        if not filename:
+            return  # User canceled the dialog
+            
+        print(f"Selected DXF file: {filename}")
+        self.statusBar().showMessage(f'Loading: {filename}...')
+        
+        # Make sure CAD widget is initialized
+        if not hasattr(self, 'cad_widget'):
+            self.statusBar().showMessage(f'CAD viewer not initialized')
+            return
+            
+        # Load the DXF file in the CAD viewer
+        dxf_info = self.cad_widget.load_dxf(filename)
+        
+        if dxf_info:
+            # Update status bar
+            self.statusBar().showMessage(f'Loaded: {filename}')
+            
+            # Extract sketch number from filename
+            try:
+                sketch_number = os.path.basename(filename)
+                # Remove extension and keep only alphanumeric part
+                sketch_number = os.path.splitext(sketch_number)[0]
+                if not sketch_number.startswith("SK"):
+                    sketch_number = f"SK{sketch_number}"
+                self.sketch_display.setText(sketch_number)
+            except:
+                self.sketch_display.setText("Unknown")
+            
+            # Display DXF information in the params text area
+            info_text = ""
+            for key, value in dxf_info.items():
+                if key == 'Entity Counts':
+                    info_text += f"{key}:\n"
+                    for entity, count in value.items():
+                        info_text += f"  - {entity}: {count}\n"
+                else:
+                    info_text += f"{key}: {value}\n"
+            
+            self.params_text.setText(info_text)
+        else:
+            self.statusBar().showMessage(f'Failed to load: {filename}')
 
     def correct_dxf(self):
         QMessageBox.information(self, "DXF Correction", "Performing DXF correction...")
@@ -643,10 +1137,7 @@ class DXFProfileAnalyzer(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
-    
-    # Set application-wide style
     app.setStyle('Fusion')
-    
     main_window = DXFProfileAnalyzer()
     main_window.show()
     
