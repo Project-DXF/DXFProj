@@ -12,6 +12,9 @@ from ezdxf.addons.drawing import Frontend, RenderContext
 from ezdxf.addons.drawing.pyqt import PyQtBackend
 
 
+# Removed custom backend - using standard PyQtBackend and post-processing for theme colors
+
+
 class DisplayManager:
     """Manages DXF file display and rendering operations."""
     
@@ -27,6 +30,7 @@ class DisplayManager:
         self.graphics_scene = graphics_scene
         self.current_doc = None
         self.current_file = None
+        self.dark_mode = False
         
         # Configure graphics view
         self._setup_graphics_view()
@@ -42,6 +46,14 @@ class DisplayManager:
     def set_background_color(self, color: QColor):
         """Set the background color of the graphics view."""
         self.graphics_view.setBackgroundBrush(QBrush(color))
+    
+    def set_theme(self, dark_mode: bool):
+        """Set the theme mode for rendering."""
+        self.dark_mode = dark_mode
+        
+        # If we have a current file, reload it with the new theme
+        if self.current_file:
+            self.load_dxf(self.current_file)
     
     def load_dxf(self, filename: str) -> bool:
         """
@@ -68,13 +80,16 @@ class DisplayManager:
             entity_count = sum(1 for _ in msp)
             print(f"Entity count: {entity_count}")
             
-            # Set up render context
+            # Set up render context with standard backend
             context = RenderContext(self.current_doc)
             backend = PyQtBackend(self.graphics_scene)
             frontend = Frontend(context, backend)
             
             # Render the model space entities
             frontend.draw_layout(self.current_doc.modelspace())
+            
+            # Apply theme-specific styling to rendered items
+            self._apply_theme_to_rendered_items()
             
             # Check if we have items in the scene
             item_count = len(self.graphics_scene.items())
@@ -95,6 +110,29 @@ class DisplayManager:
             traceback.print_exc()
             self._show_error(f"Failed to load DXF file: {str(e)}")
             return False
+    
+
+    def _apply_theme_to_rendered_items(self):
+        """Apply theme-specific styling to rendered graphics items."""
+        from PyQt5.QtWidgets import (QGraphicsLineItem, QGraphicsEllipseItem, QGraphicsPathItem, 
+                                    QGraphicsPolygonItem, QGraphicsRectItem, QAbstractGraphicsShapeItem)
+        from PyQt5.QtGui import QPen
+        
+        # Define colors based on theme
+        line_color = QColor(0, 0, 0) if not self.dark_mode else QColor(255, 255, 255)
+        
+        # Apply styling to all graphics items
+        for item in self.graphics_scene.items():
+            # Check if item has a pen (most shape items do)
+            if hasattr(item, 'pen') and hasattr(item, 'setPen'):
+                try:
+                    # Get current pen and update color
+                    pen = item.pen()
+                    pen.setColor(line_color)
+                    item.setPen(pen)
+                except:
+                    # If there's any issue with setting the pen, skip this item
+                    continue
     
     def _fit_content_to_view(self):
         """Fit the DXF content to the graphics view."""
@@ -170,7 +208,7 @@ class DisplayManager:
         placeholder_label.setWordWrap(True)
         placeholder_label.setFont(QFont("Segoe UI", 12))
         
-        # Style based on error state
+        # Style based on error state and theme
         if is_error:
             placeholder_label.setStyleSheet("""
                 QLabel {
@@ -183,16 +221,28 @@ class DisplayManager:
                 }
             """)
         else:
-            placeholder_label.setStyleSheet("""
-                QLabel {
-                    color: #666;
-                    background-color: rgba(240, 240, 240, 0.8);
-                    border: 2px dashed #ccc;
-                    border-radius: 8px;
-                    padding: 20px;
-                    margin: 20px;
-                }
-            """)
+            if self.dark_mode:
+                placeholder_label.setStyleSheet("""
+                    QLabel {
+                        color: #ccc;
+                        background-color: rgba(60, 60, 60, 0.8);
+                        border: 2px dashed #666;
+                        border-radius: 8px;
+                        padding: 20px;
+                        margin: 20px;
+                    }
+                """)
+            else:
+                placeholder_label.setStyleSheet("""
+                    QLabel {
+                        color: #666;
+                        background-color: rgba(240, 240, 240, 0.8);
+                        border: 2px dashed #ccc;
+                        border-radius: 8px;
+                        padding: 20px;
+                        margin: 20px;
+                    }
+                """)
         
         # Add to scene
         placeholder_proxy = QGraphicsProxyWidget()

@@ -177,9 +177,9 @@ class DXFProfileAnalyzer(QMainWindow):
         
     def update_component_styles(self):
         """Update styles for components that need special handling"""
-        # Update CAD widget background
+        # Update CAD widget theme
         if hasattr(self, 'cad_widget'):
-            self.cad_widget.graphics_view.setBackgroundBrush(QBrush(self.colors['background']))
+            self.cad_widget.apply_theme()
             
     def create_cad_viewer_tab(self):
         """Create the CAD viewer tab"""

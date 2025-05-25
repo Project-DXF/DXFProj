@@ -128,15 +128,16 @@ class CADWidget(QWidget):
         self.graphics_view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.graphics_view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
         
-        # Set background color
+        # Set background color and theme
         if self.parent and hasattr(self.parent, 'colors'):
             self.display_manager.set_background_color(self.parent.colors['background'])
+            if hasattr(self.parent, 'dark_mode'):
+                self.display_manager.set_theme(self.parent.dark_mode)
         
         layout.addWidget(self.graphics_view)
         
         # Add status bar
         self.status_label = QLabel("Ready - Upload a DXF file to begin")
-        self.status_label.setStyleSheet("padding: 5px; background: #f0f0f0; border-top: 1px solid #ddd;")
         layout.addWidget(self.status_label)
         
         # Add placeholder text
@@ -149,24 +150,6 @@ class CADWidget(QWidget):
         toolbar = QToolBar()
         toolbar.setMovable(False)
         toolbar.setIconSize(QSize(24, 24))
-        toolbar.setStyleSheet("""
-            QToolBar {
-                spacing: 5px;
-                padding: 5px;
-                background: transparent;
-            }
-            QToolButton {
-                padding: 8px;
-                border-radius: 4px;
-                background: #f0f0f0;
-            }
-            QToolButton:hover {
-                background: #e0e0e0;
-            }
-            QToolButton:pressed {
-                background: #d0d0d0;
-            }
-        """)
         
         # File operations
         upload_action = QAction(QIcon.fromTheme("document-open"), "Upload DXF", self)
@@ -192,224 +175,203 @@ class CADWidget(QWidget):
         fit_action.triggered.connect(self.fit_to_view)
         toolbar.addAction(fit_action)
         
-        toolbar.addSeparator()
-        
-        # Processing operations
-        self.correct_action = QAction(QIcon.fromTheme("tools-check-spelling"), "Correct DXF", self)
-        self.correct_action.setToolTip("Fix incomplete lines and errors")
-        self.correct_action.triggered.connect(self.correct_dxf)
-        self.correct_action.setEnabled(False)
-        toolbar.addAction(self.correct_action)
-        
-        self.loops_action = QAction(QIcon.fromTheme("view-refresh"), "Detect Loops", self)
-        self.loops_action.setToolTip("Detect and highlight loops")
-        self.loops_action.triggered.connect(self.detect_loops)
-        self.loops_action.setEnabled(False)
-        toolbar.addAction(self.loops_action)
-        
         return toolbar
     
     def _create_control_panel(self):
-        """Create the control panel with tabs."""
+        """Create the control panel with input fields and action buttons."""
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(20)
         
-        # Create tab widget
-        self.tab_widget = QTabWidget()
+        # Input Information section
+        input_group = QGroupBox("Input Information")
+        input_layout = QFormLayout()
+        input_layout.setSpacing(10)
         
-        # Add tabs
-        self.tab_widget.addTab(self._create_info_tab(), "File Info")
-        self.tab_widget.addTab(self._create_analysis_tab(), "Analysis")
-        self.tab_widget.addTab(self._create_processing_tab(), "Processing")
-        self.tab_widget.addTab(self._create_profile_tab(), "Profile")
+        # Sketch Number field
+        self.sketch_number_field = QLineEdit()
+        self.sketch_number_field.setPlaceholderText("Enter sketch number")
+        input_layout.addRow("Sketch Number:", self.sketch_number_field)
         
-        layout.addWidget(self.tab_widget)
+        # Profile Number field  
+        self.profile_number_field = QLineEdit()
+        self.profile_number_field.setPlaceholderText("Enter profile number")
+        input_layout.addRow("Profile Number:", self.profile_number_field)
         
-        # Add progress bar
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        layout.addWidget(self.progress_bar)
+        input_group.setLayout(input_layout)
+        layout.addWidget(input_group)
+        
+        # Processed Parameters section
+        params_group = QGroupBox("Processed Parameters")
+        params_layout = QFormLayout()
+        params_layout.setSpacing(8)
+        
+        # Parameter fields (read-only)
+        self.length_field = QLineEdit()
+        self.length_field.setReadOnly(True)
+        params_layout.addRow("Length:", self.length_field)
+        
+        self.width_field = QLineEdit()
+        self.width_field.setReadOnly(True)
+        params_layout.addRow("Width:", self.width_field)
+        
+        self.height_field = QLineEdit()
+        self.height_field.setReadOnly(True)
+        params_layout.addRow("Height:", self.height_field)
+        
+        self.material_field = QLineEdit()
+        self.material_field.setReadOnly(True)
+        params_layout.addRow("Material:", self.material_field)
+        
+        self.thickness_field = QLineEdit()
+        self.thickness_field.setReadOnly(True)
+        params_layout.addRow("Thickness:", self.thickness_field)
+        
+        params_group.setLayout(params_layout)
+        layout.addWidget(params_group)
+        
+        # Actions section
+        actions_group = QGroupBox("Actions")
+        actions_layout = QVBoxLayout()
+        actions_layout.setSpacing(10)
+        
+        # Create action buttons
+        self.upload_dxf_btn = QPushButton("Upload DXF")
+        self.upload_dxf_btn.clicked.connect(self.upload_dxf)
+        actions_layout.addWidget(self.upload_dxf_btn)
+        
+        self.correct_dxf_btn = QPushButton("Correct DXF")
+        self.correct_dxf_btn.clicked.connect(self.correct_dxf)
+        self.correct_dxf_btn.setEnabled(False)
+        actions_layout.addWidget(self.correct_dxf_btn)
+        
+        self.display_loops_btn = QPushButton("Display Loops")
+        self.display_loops_btn.clicked.connect(self.detect_loops)
+        self.display_loops_btn.setEnabled(False)
+        actions_layout.addWidget(self.display_loops_btn)
+        
+        self.process_btn = QPushButton("Process")
+        self.process_btn.clicked.connect(self.process_dxf)
+        self.process_btn.setEnabled(False)
+        actions_layout.addWidget(self.process_btn)
+        
+        self.upload_profile_btn = QPushButton("Upload New Profile")
+        self.upload_profile_btn.clicked.connect(self.save_profile)
+        self.upload_profile_btn.setEnabled(False)
+        actions_layout.addWidget(self.upload_profile_btn)
+        
+        actions_group.setLayout(actions_layout)
+        layout.addWidget(actions_group)
+        
+        # Add stretch to push everything to the top
+        layout.addStretch()
+        
+        # Apply theme styling
+        self._apply_control_panel_styling()
         
         return panel
     
-    def _create_info_tab(self):
-        """Create the file information tab."""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        
-        # File information group
-        info_group = QGroupBox("File Information")
-        info_layout = QFormLayout()
-        
-        self.file_name_field = QLineEdit()
-        self.file_name_field.setReadOnly(True)
-        self.file_size_field = QLineEdit()
-        self.file_size_field.setReadOnly(True)
-        self.dxf_version_field = QLineEdit()
-        self.dxf_version_field.setReadOnly(True)
-        self.units_field = QLineEdit()
-        self.units_field.setReadOnly(True)
-        
-        info_layout.addRow("File Name:", self.file_name_field)
-        info_layout.addRow("File Size:", self.file_size_field)
-        info_layout.addRow("DXF Version:", self.dxf_version_field)
-        info_layout.addRow("Units:", self.units_field)
-        
-        info_group.setLayout(info_layout)
-        layout.addWidget(info_group)
-        
-        # Entity statistics group
-        stats_group = QGroupBox("Entity Statistics")
-        stats_layout = QFormLayout()
-        
-        self.total_entities_field = QLineEdit()
-        self.total_entities_field.setReadOnly(True)
-        self.layers_count_field = QLineEdit()
-        self.layers_count_field.setReadOnly(True)
-        self.lines_count_field = QLineEdit()
-        self.lines_count_field.setReadOnly(True)
-        self.arcs_count_field = QLineEdit()
-        self.arcs_count_field.setReadOnly(True)
-        
-        stats_layout.addRow("Total Entities:", self.total_entities_field)
-        stats_layout.addRow("Layers:", self.layers_count_field)
-        stats_layout.addRow("Lines:", self.lines_count_field)
-        stats_layout.addRow("Arcs:", self.arcs_count_field)
-        
-        stats_group.setLayout(stats_layout)
-        layout.addWidget(stats_group)
-        
-        layout.addStretch()
-        return tab
-    
-    def _create_analysis_tab(self):
-        """Create the analysis results tab."""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        
-        # Analysis results text area
-        self.analysis_text = QTextEdit()
-        self.analysis_text.setReadOnly(True)
-        self.analysis_text.setFont(QFont("Consolas", 9))
-        layout.addWidget(self.analysis_text)
-        
-        # Analysis buttons
-        buttons_layout = QHBoxLayout()
-        
-        self.analyze_btn = QPushButton("Analyze File")
-        self.analyze_btn.clicked.connect(self.analyze_file)
-        self.analyze_btn.setEnabled(False)
-        buttons_layout.addWidget(self.analyze_btn)
-        
-        self.export_analysis_btn = QPushButton("Export Analysis")
-        self.export_analysis_btn.clicked.connect(self.export_analysis)
-        self.export_analysis_btn.setEnabled(False)
-        buttons_layout.addWidget(self.export_analysis_btn)
-        
-        layout.addLayout(buttons_layout)
-        
-        return tab
-    
-    def _create_processing_tab(self):
-        """Create the processing operations tab."""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        
-        # Correction operations
-        correction_group = QGroupBox("Correction Operations")
-        correction_layout = QVBoxLayout()
-        
-        self.fix_lines_btn = QPushButton("Fix Incomplete Lines")
-        self.fix_lines_btn.clicked.connect(self.fix_incomplete_lines)
-        self.fix_lines_btn.setEnabled(False)
-        correction_layout.addWidget(self.fix_lines_btn)
-        
-        self.remove_duplicates_btn = QPushButton("Remove Duplicates")
-        self.remove_duplicates_btn.clicked.connect(self.remove_duplicates)
-        self.remove_duplicates_btn.setEnabled(False)
-        correction_layout.addWidget(self.remove_duplicates_btn)
-        
-        self.cleanup_btn = QPushButton("General Cleanup")
-        self.cleanup_btn.clicked.connect(self.general_cleanup)
-        self.cleanup_btn.setEnabled(False)
-        correction_layout.addWidget(self.cleanup_btn)
-        
-        correction_group.setLayout(correction_layout)
-        layout.addWidget(correction_group)
-        
-        # Loop detection operations
-        loop_group = QGroupBox("Loop Detection")
-        loop_layout = QVBoxLayout()
-        
-        self.detect_loops_btn = QPushButton("Detect All Loops")
-        self.detect_loops_btn.clicked.connect(self.detect_loops)
-        self.detect_loops_btn.setEnabled(False)
-        loop_layout.addWidget(self.detect_loops_btn)
-        
-        self.find_largest_loop_btn = QPushButton("Find Largest Loop")
-        self.find_largest_loop_btn.clicked.connect(self.find_largest_loop)
-        self.find_largest_loop_btn.setEnabled(False)
-        loop_layout.addWidget(self.find_largest_loop_btn)
-        
-        self.clear_highlights_btn = QPushButton("Clear Highlights")
-        self.clear_highlights_btn.clicked.connect(self.clear_loop_highlights)
-        self.clear_highlights_btn.setEnabled(False)
-        loop_layout.addWidget(self.clear_highlights_btn)
-        
-        loop_group.setLayout(loop_layout)
-        layout.addWidget(loop_group)
-        
-        layout.addStretch()
-        return tab
-    
-    def _create_profile_tab(self):
-        """Create the profile management tab."""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        
-        # Profile information
-        profile_group = QGroupBox("Profile Information")
-        profile_layout = QFormLayout()
-        
-        self.profile_name_field = QLineEdit()
-        self.profile_name_field.setPlaceholderText("Enter profile name")
-        self.profile_description_field = QLineEdit()
-        self.profile_description_field.setPlaceholderText("Enter description")
-        self.profile_category_combo = QComboBox()
-        self.profile_category_combo.addItems([
-            "Structural", "Mechanical", "Architectural", 
-            "Electrical", "Piping", "HVAC", "Custom"
-        ])
-        
-        profile_layout.addRow("Name:", self.profile_name_field)
-        profile_layout.addRow("Description:", self.profile_description_field)
-        profile_layout.addRow("Category:", self.profile_category_combo)
-        
-        profile_group.setLayout(profile_layout)
-        layout.addWidget(profile_group)
-        
-        # Profile operations
-        operations_layout = QHBoxLayout()
-        
-        self.save_profile_btn = QPushButton("Save Profile")
-        self.save_profile_btn.clicked.connect(self.save_profile)
-        self.save_profile_btn.setEnabled(False)
-        operations_layout.addWidget(self.save_profile_btn)
-        
-        self.load_profile_btn = QPushButton("Load Profile")
-        self.load_profile_btn.clicked.connect(self.load_profile)
-        operations_layout.addWidget(self.load_profile_btn)
-        
-        layout.addLayout(operations_layout)
-        
-        layout.addStretch()
-        return tab
+    def _apply_control_panel_styling(self):
+        """Apply styling to the control panel based on current theme."""
+        # Get theme colors from parent
+        if self.parent and hasattr(self.parent, 'colors') and hasattr(self.parent, 'dark_mode'):
+            colors = self.parent.colors
+            dark_mode = self.parent.dark_mode
+            
+            # Button styling
+            button_style = f"""
+                QPushButton {{
+                    padding: 12px;
+                    border-radius: 6px;
+                    font-weight: bold;
+                    min-height: 20px;
+                    background-color: {colors['primary'].name()};
+                    color: {'white' if dark_mode else 'white'};
+                    border: none;
+                }}
+                QPushButton:hover {{
+                    background-color: {colors['secondary'].name()};
+                }}
+                QPushButton:pressed {{
+                    background-color: {colors['secondary'].darker(120).name()};
+                }}
+                QPushButton:disabled {{
+                    background-color: {'#555' if dark_mode else '#BDBDBD'};
+                    color: {'#888' if dark_mode else '#757575'};
+                }}
+            """
+            
+            # Apply to all buttons
+            for btn in [self.upload_dxf_btn, self.correct_dxf_btn, self.display_loops_btn, 
+                       self.process_btn, self.upload_profile_btn]:
+                btn.setStyleSheet(button_style)
+            
+            # Input field styling
+            input_style = f"""
+                QLineEdit {{
+                    padding: 8px;
+                    border: 1px solid {'#555' if dark_mode else '#ddd'};
+                    border-radius: 4px;
+                    background-color: {colors['surface'].name()};
+                    color: {colors['text'].name()};
+                }}
+                QLineEdit:focus {{
+                    border-color: {colors['primary'].name()};
+                }}
+                QLineEdit:read-only {{
+                    background-color: {'#333' if dark_mode else '#f5f5f5'};
+                    color: {'#aaa' if dark_mode else '#666'};
+                }}
+            """
+            
+            # Apply to all input fields
+            for field in [self.sketch_number_field, self.profile_number_field, self.length_field,
+                         self.width_field, self.height_field, self.material_field, self.thickness_field]:
+                field.setStyleSheet(input_style)
+            
+            # Status label styling
+            status_style = f"""
+                QLabel {{
+                    padding: 5px;
+                    background: {colors['surface'].name()};
+                    border-top: 1px solid {'#555' if dark_mode else '#ddd'};
+                    color: {colors['text'].name()};
+                }}
+            """
+            self.status_label.setStyleSheet(status_style)
+            
+            # Toolbar styling
+            toolbar_style = f"""
+                QToolBar {{
+                    spacing: 5px;
+                    padding: 5px;
+                    background: {colors['background'].name()};
+                    border-bottom: 1px solid {'#555' if dark_mode else '#ddd'};
+                }}
+                QToolButton {{
+                    padding: 8px;
+                    border-radius: 4px;
+                    background: {colors['surface'].name()};
+                    color: {colors['text'].name()};
+                }}
+                QToolButton:hover {{
+                    background: {colors['primary'].lighter(150).name()};
+                }}
+                QToolButton:pressed {{
+                    background: {colors['primary'].name()};
+                }}
+            """
+            
+            # Find and style the toolbar
+            toolbar = self.findChild(QToolBar)
+            if toolbar:
+                toolbar.setStyleSheet(toolbar_style)
     
     def _connect_signals(self):
         """Connect signals and slots."""
         pass  # Signals are connected in individual methods
-    
+
     def upload_dxf(self):
         """Handle DXF file upload."""
         file_name, _ = QFileDialog.getOpenFileName(
@@ -421,21 +383,23 @@ class CADWidget(QWidget):
         
         if file_name:
             self.load_dxf(file_name)
-    
+
     def load_dxf(self, filename):
-        """Load a DXF file using the display manager."""
+        """Load a DXF file."""
         try:
-            self.status_label.setText("Loading DXF file...")
+            self.current_file = filename
             
             # Load using display manager
             success = self.display_manager.load_dxf(filename)
             
             if success:
-                self.current_file = filename
-                self.current_doc = self.display_manager.get_current_doc()
+                # Load document for processing
+                self.current_doc = ezdxf.readfile(filename)
                 
-                # Update UI
+                # Update file info
                 self._update_file_info()
+                
+                # Enable processing buttons
                 self._enable_processing_buttons()
                 
                 self.status_label.setText(f"Loaded: {os.path.basename(filename)}")
@@ -445,81 +409,45 @@ class CADWidget(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load DXF file: {str(e)}")
             self.status_label.setText("Error loading file")
-    
+
     def _update_file_info(self):
-        """Update the file information fields."""
-        if not self.current_file:
+        """Update file information display."""
+        if not self.current_doc:
             return
         
-        file_path = Path(self.current_file)
-        
-        # Basic file info
-        self.file_name_field.setText(file_path.name)
-        self.file_size_field.setText(f"{file_path.stat().st_size / 1024:.1f} KB")
-        
-        if self.current_doc:
-            self.dxf_version_field.setText(self.current_doc.dxfversion)
-            
-            # Get entity counts
+        try:
+            # Get basic file info
             msp = self.current_doc.modelspace()
             entities = list(msp)
             
-            entity_counts = {}
-            for entity in entities:
-                entity_type = entity.dxftype()
-                entity_counts[entity_type] = entity_counts.get(entity_type, 0) + 1
+            # Calculate basic dimensions
+            if entities:
+                try:
+                    extents = msp.get_extents()
+                    if extents:
+                        width = extents.max.x - extents.min.x
+                        height = extents.max.y - extents.min.y
+                        
+                        self.width_field.setText(f"{width:.2f}")
+                        self.height_field.setText(f"{height:.2f}")
+                except:
+                    pass
             
-            self.total_entities_field.setText(str(len(entities)))
-            self.layers_count_field.setText(str(len(list(self.current_doc.layers))))
-            self.lines_count_field.setText(str(entity_counts.get('LINE', 0)))
-            self.arcs_count_field.setText(str(entity_counts.get('ARC', 0)))
-    
+            # Set default values for other fields
+            self.length_field.setText("N/A")
+            self.material_field.setText("Unknown")
+            self.thickness_field.setText("N/A")
+            
+        except Exception as e:
+            print(f"Error updating file info: {e}")
+
     def _enable_processing_buttons(self):
         """Enable processing buttons when a file is loaded."""
-        buttons = [
-            self.correct_action, self.loops_action,
-            self.analyze_btn, self.fix_lines_btn, self.remove_duplicates_btn,
-            self.cleanup_btn, self.detect_loops_btn, self.find_largest_loop_btn,
-            self.save_profile_btn
-        ]
-        
-        for button in buttons:
-            button.setEnabled(True)
-    
-    def analyze_file(self):
-        """Perform comprehensive file analysis."""
-        if not self.current_file:
-            return
-        
-        self.status_label.setText("Analyzing file...")
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)  # Indeterminate progress
-        
-        # Run analysis in worker thread
-        self.processing_worker = ProcessingWorker(
-            self.analysis_engine.analyze_file, 
-            self.current_file
-        )
-        self.processing_worker.processing_completed.connect(self._on_analysis_completed)
-        self.processing_worker.error_occurred.connect(self._on_processing_error)
-        self.processing_worker.start()
-    
-    def _on_analysis_completed(self, results):
-        """Handle completed analysis."""
-        self.progress_bar.setVisible(False)
-        self.status_label.setText("Analysis completed")
-        
-        # Generate and display report
-        report = self.analysis_engine.generate_report()
-        self.analysis_text.setText(report)
-        self.export_analysis_btn.setEnabled(True)
-    
-    def _on_processing_error(self, error_message):
-        """Handle processing errors."""
-        self.progress_bar.setVisible(False)
-        self.status_label.setText("Processing error occurred")
-        QMessageBox.critical(self, "Processing Error", error_message)
-    
+        self.correct_dxf_btn.setEnabled(True)
+        self.display_loops_btn.setEnabled(True)
+        self.process_btn.setEnabled(True)
+        self.upload_profile_btn.setEnabled(True)
+
     def correct_dxf(self):
         """Apply DXF corrections."""
         if not self.current_doc:
@@ -527,21 +455,26 @@ class CADWidget(QWidget):
         
         self.status_label.setText("Applying corrections...")
         
-        # Apply corrections
-        self.dxf_corrector.load_document(self.current_doc)
-        results = self.dxf_corrector.correct_dxf()
-        
-        # Show results
-        message = f"Corrections applied:\n"
-        for correction in results.get('corrections_applied', []):
-            message += f"- {correction.get('operation', 'Unknown')}: {correction.get('message', '')}\n"
-        
-        QMessageBox.information(self, "Corrections Applied", message)
-        
-        # Refresh display
-        self.display_manager.refresh_view()
-        self.status_label.setText("Corrections applied")
-    
+        try:
+            # Apply corrections
+            self.dxf_corrector.load_document(self.current_doc)
+            results = self.dxf_corrector.correct_dxf()
+            
+            # Show results
+            message = f"Corrections applied:\n"
+            for correction in results.get('corrections_applied', []):
+                message += f"- {correction.get('operation', 'Unknown')}: {correction.get('message', '')}\n"
+            
+            QMessageBox.information(self, "Corrections Applied", message)
+            
+            # Refresh display
+            self.display_manager.refresh_view()
+            self.status_label.setText("Corrections applied")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to apply corrections: {str(e)}")
+            self.status_label.setText("Error applying corrections")
+
     def detect_loops(self):
         """Detect and highlight loops."""
         if not self.current_doc:
@@ -549,183 +482,144 @@ class CADWidget(QWidget):
         
         self.status_label.setText("Detecting loops...")
         
-        # Detect loops
-        self.loop_detector.set_document(self.current_doc)
-        loops_data = self.loop_detector.detect_loops()
-        
-        # Highlight loops
-        success = self.loop_visualizer.highlight_loops(loops_data)
-        
-        if success:
-            loop_count = loops_data.get('total_loops', 0)
-            self.status_label.setText(f"Found and highlighted {loop_count} loops")
-            self.clear_highlights_btn.setEnabled(True)
-        else:
-            self.status_label.setText("No loops found")
-    
-    def find_largest_loop(self):
-        """Find and highlight the largest loop."""
+        try:
+            # Detect loops
+            self.loop_detector.set_document(self.current_doc)
+            loops_data = self.loop_detector.detect_loops()
+            
+            # Highlight loops
+            success = self.loop_visualizer.highlight_loops(loops_data)
+            
+            if success:
+                loop_count = loops_data.get('total_loops', 0)
+                self.status_label.setText(f"Found and highlighted {loop_count} loops")
+            else:
+                self.status_label.setText("No loops found")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to detect loops: {str(e)}")
+            self.status_label.setText("Error detecting loops")
+
+    def process_dxf(self):
+        """Process the DXF file and extract features."""
         if not self.current_doc:
             return
         
-        self.status_label.setText("Finding largest loop...")
+        self.status_label.setText("Processing DXF file...")
         
-        # Find largest loop
-        self.loop_detector.set_document(self.current_doc)
-        largest_loop = self.loop_detector.find_largest_loop()
-        
-        # Highlight largest loop
-        success = self.loop_visualizer.highlight_largest_loop(largest_loop)
-        
-        if success:
-            area = largest_loop.get('area', 0)
-            self.status_label.setText(f"Highlighted largest loop (area: {area:.2f})")
-            self.clear_highlights_btn.setEnabled(True)
-        else:
-            self.status_label.setText("No loops found")
-    
-    def clear_loop_highlights(self):
-        """Clear loop highlights."""
-        self.loop_visualizer.clear_highlights()
-        self.clear_highlights_btn.setEnabled(False)
-        self.status_label.setText("Loop highlights cleared")
-    
-    def fix_incomplete_lines(self):
-        """Fix incomplete lines."""
-        if not self.current_doc:
-            return
-        
-        self.dxf_corrector.load_document(self.current_doc)
-        result = self.dxf_corrector.fix_incomplete_lines()
-        
-        QMessageBox.information(self, "Fix Incomplete Lines", result.get('message', 'Operation completed'))
-        self.display_manager.refresh_view()
-    
-    def remove_duplicates(self):
-        """Remove duplicate entities."""
-        if not self.current_doc:
-            return
-        
-        self.dxf_corrector.load_document(self.current_doc)
-        result = self.dxf_corrector.remove_duplicates()
-        
-        QMessageBox.information(self, "Remove Duplicates", result.get('message', 'Operation completed'))
-        self.display_manager.refresh_view()
-    
-    def general_cleanup(self):
-        """Perform general cleanup operations."""
-        if not self.current_doc:
-            return
-        
-        # Apply various cleanup operations
-        results = []
-        
-        # Cleanup layers
-        layer_result = self.cleanup_tools.cleanup_layers(self.current_doc)
-        results.append(layer_result.get('message', 'Layer cleanup completed'))
-        
-        # Optimize entities
-        entity_result = self.cleanup_tools.optimize_entities(self.current_doc)
-        results.append(entity_result.get('message', 'Entity optimization completed'))
-        
-        # Show results
-        message = "Cleanup operations completed:\n" + "\n".join(results)
-        QMessageBox.information(self, "General Cleanup", message)
-        self.display_manager.refresh_view()
-    
+        try:
+            # Extract features
+            self.feature_extractor.set_document(self.current_doc)
+            features = self.feature_extractor.extract_geometric_features()
+            
+            # Analyze the file
+            self.analysis_engine.set_document(self.current_doc)
+            analysis = self.analysis_engine.analyze_dxf()
+            
+            # Update parameter fields with extracted data
+            if features and 'overall' in features:
+                overall = features['overall']
+                if 'dimensions' in overall:
+                    dims = overall['dimensions']
+                    self.length_field.setText(f"{dims.get('length', 0):.2f}")
+                    self.width_field.setText(f"{dims.get('width', 0):.2f}")
+                    self.height_field.setText(f"{dims.get('height', 0):.2f}")
+            
+            self.status_label.setText("Processing completed")
+            QMessageBox.information(self, "Processing Complete", "DXF file processed successfully")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to process DXF: {str(e)}")
+            self.status_label.setText("Error processing file")
+
     def save_profile(self):
         """Save the current profile."""
         if not self.current_doc:
+            QMessageBox.warning(self, "Save Profile", "Please load a DXF file first")
             return
         
-        # Get profile information
-        name = self.profile_name_field.text().strip()
-        if not name:
-            QMessageBox.warning(self, "Save Profile", "Please enter a profile name")
+        # Get input information
+        sketch_number = self.sketch_number_field.text().strip()
+        profile_number = self.profile_number_field.text().strip()
+        
+        if not sketch_number or not profile_number:
+            QMessageBox.warning(self, "Save Profile", "Please enter both sketch number and profile number")
             return
         
-        description = self.profile_description_field.text().strip()
-        category = self.profile_category_combo.currentText()
-        
-        # Create profile data
-        profile_data = {
-            'name': name,
-            'description': description,
-            'category': category,
-            'source_file': self.current_file
-        }
-        
-        # Add analysis data if available
-        if hasattr(self.analysis_engine, 'current_analysis') and self.analysis_engine.current_analysis:
-            profile_data.update(self.analysis_engine.current_analysis)
-        
-        # Save profile
-        result = self.profile_manager.create_profile(profile_data)
-        
-        if result.get('success'):
-            QMessageBox.information(self, "Save Profile", "Profile saved successfully")
-        else:
-            QMessageBox.critical(self, "Save Profile", f"Failed to save profile: {result.get('error')}")
-    
-    def load_profile(self):
-        """Load an existing profile."""
-        # This would open a profile selection dialog
-        # For now, just show a placeholder message
-        QMessageBox.information(self, "Load Profile", "Profile loading functionality will be implemented")
-    
-    def export_analysis(self):
-        """Export analysis results."""
-        if not hasattr(self.analysis_engine, 'current_analysis'):
-            return
-        
-        file_name, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export Analysis",
-            "analysis_report.txt",
-            "Text Files (*.txt);;All Files (*)"
-        )
-        
-        if file_name:
-            try:
-                report = self.analysis_engine.generate_report()
-                with open(file_name, 'w') as f:
-                    f.write(report)
-                QMessageBox.information(self, "Export Analysis", "Analysis exported successfully")
-            except Exception as e:
-                QMessageBox.critical(self, "Export Error", f"Failed to export analysis: {str(e)}")
-    
+        try:
+            # Create profile data
+            profile_data = {
+                'name': f"Profile_{profile_number}",
+                'description': f"Profile from sketch {sketch_number}",
+                'category': 'Custom',
+                'sketch_number': sketch_number,
+                'profile_number': profile_number,
+                'source_file': self.current_file,
+                'parameters': {
+                    'length': self.length_field.text(),
+                    'width': self.width_field.text(),
+                    'height': self.height_field.text(),
+                    'material': self.material_field.text(),
+                    'thickness': self.thickness_field.text()
+                }
+            }
+            
+            # Save profile
+            result = self.profile_manager.create_profile(profile_data)
+            
+            if result.get('success'):
+                QMessageBox.information(self, "Save Profile", "Profile saved successfully")
+                self.status_label.setText("Profile saved")
+            else:
+                QMessageBox.critical(self, "Save Profile", f"Failed to save profile: {result.get('error')}")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save profile: {str(e)}")
+
     def zoom_in(self):
         """Zoom in the view."""
         self.display_manager.zoom_in()
-    
+
     def zoom_out(self):
         """Zoom out the view."""
         self.display_manager.zoom_out()
-    
+
     def fit_to_view(self):
         """Fit the drawing to view."""
         self.display_manager.fit_to_view()
-    
+
     def wheelEvent(self, event):
         """Handle mouse wheel events for zooming."""
         if event.angleDelta().y() > 0:
             self.zoom_in()
         else:
             self.zoom_out()
-    
+
     def dragEnterEvent(self, event: QDragEnterEvent):
         """Handle drag enter events."""
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
-            if urls and urls[0].toLocalFile().lower().endswith('.dxf'):
+            if any(url.toLocalFile().lower().endswith('.dxf') for url in urls):
                 event.acceptProposedAction()
-    
+
     def dropEvent(self, event: QDropEvent):
         """Handle drop events."""
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
-            if urls:
-                file_path = urls[0].toLocalFile()
+            for url in urls:
+                file_path = url.toLocalFile()
                 if file_path.lower().endswith('.dxf'):
                     self.load_dxf(file_path)
-                    event.acceptProposedAction() 
+                    break
+    
+    def apply_theme(self):
+        """Apply the current theme to the widget."""
+        self._apply_control_panel_styling()
+        
+        # Update display manager background and theme
+        if self.parent and hasattr(self.parent, 'colors'):
+            self.display_manager.set_background_color(self.parent.colors['background'])
+            
+            # Set theme mode for DXF rendering
+            if hasattr(self.parent, 'dark_mode'):
+                self.display_manager.set_theme(self.parent.dark_mode) 
