@@ -173,4 +173,24 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# Project specific
 *.pdf
+logs/*.log
+data/temp/
+data/cache/
+config/local_settings.py
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*~

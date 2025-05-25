@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dxf-profile-analyzer"
+version = "1.0.0"
+description = "A comprehensive tool for analyzing extrusion die profiles from DXF files"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "DXF Analyzer Team", email = "contact@dxfanalyzer.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Manufacturing",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "ezdxf>=1.4.1",
+    "numpy>=2.2.5",
+    "matplotlib>=3.10.3",
+    "scipy>=1.15.3",
+    "PyQt5>=5.15.11",
+    "pyqtgraph>=0.13.7",
+    "postgres>=4.0",
+    "tqdm>=4.62.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.2.0",
+    "pytest-cov>=3.0.0",
+    "black>=22.0.0",
+    "flake8>=4.0.0",
+    "mypy>=0.950",
+]
+ml = [
+    "scikit-learn>=1.0.0",
+    "tensorflow>=2.7.0",
+]
+image = [
+    "opencv-python>=4.5.0",
+    "scikit-image>=0.18.0",
+]
+
+[project.scripts]
+dxf-analyzer = "src.dxf_analyzer.core.application:DXFProfileAnalyzer.main"
+
+[project.urls]
+Homepage = "https://github.com/your-org/dxf-profile-analyzer"
+Repository = "https://github.com/your-org/dxf-profile-analyzer.git"
+Documentation = "https://dxf-profile-analyzer.readthedocs.io"
+"Bug Tracker" = "https://github.com/your-org/dxf-profile-analyzer/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=src/dxf_analyzer --cov-report=html --cov-report=term-missing"
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true 
