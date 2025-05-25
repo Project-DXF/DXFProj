@@ -1,8 +1,35 @@
 """
 DXF Processing Module
 
-This module contains components for handling DXF files, including:
-- DXF Viewer
-- CAD Widget
-- DXF file operations
+This module contains components for handling DXF files, organized into specialized submodules:
+- viewing: DXF file viewing and display
+- workflow_processing: Internal DXF processing and analysis
+- correction: DXF data correction and cleanup
+- loop_detection: Loop detection and analysis
+- profile_management: CAD profile management
 """
+
+# Import main components from submodules
+from .viewing import DXFViewer, DisplayManager
+from .workflow_processing import DXFProcessor, FeatureExtractor, AnalysisEngine
+from .correction import DXFCorrector, GeometryFixer, CleanupTools
+from .loop_detection import LoopDetector, PathAnalyzer, LoopVisualizer
+from .profile_management import ProfileManager
+
+# For backward compatibility, create a new CADWidget that uses the modular components
+from .cad_widget_modular import CADWidget
+
+__all__ = [
+    # Viewing components
+    'DXFViewer', 'DisplayManager',
+    # Workflow processing components
+    'DXFProcessor', 'FeatureExtractor', 'AnalysisEngine',
+    # Correction components
+    'DXFCorrector', 'GeometryFixer', 'CleanupTools',
+    # Loop detection components
+    'LoopDetector', 'PathAnalyzer', 'LoopVisualizer',
+    # Profile management components
+    'ProfileManager',
+    # Main widget
+    'CADWidget'
+]

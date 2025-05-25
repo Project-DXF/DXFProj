@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
                             QCheckBox, QToolBar, QAction)
 from PyQt5.QtGui import QFont, QIcon, QPalette, QColor, QBrush
 from PyQt5.QtCore import Qt, QSize
-from ..processing.cad_widget import CADWidget
+from ..processing import CADWidget
 # TODO: Update these imports when modules are restructured
 # from profile_matching.feature_comparison import FeatureComparisonTab
 # from profile_matching.best_match import BestMatchTab
