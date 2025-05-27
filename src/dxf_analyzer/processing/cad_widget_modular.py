@@ -9,12 +9,15 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                             QGraphicsView, QGraphicsScene, QLabel, QGroupBox, 
                             QFormLayout, QLineEdit, QSplitter, QMessageBox,
                             QFileDialog, QToolBar, QAction, QTextEdit, QTabWidget,
-                            QProgressBar, QComboBox)
+                            QProgressBar, QComboBox, QScrollArea, QTreeWidget, 
+                            QTreeWidgetItem, QHeaderView)
 from PyQt5.QtGui import QIcon, QBrush, QColor, QPainter, QFont, QDragEnterEvent, QDropEvent
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal
 import ezdxf
 import os
 from pathlib import Path
+from typing import Dict, Any
+from datetime import datetime
 
 # Import the new modular components
 from .viewing import DisplayManager
@@ -22,6 +25,8 @@ from .workflow_processing import DXFProcessor, FeatureExtractor, AnalysisEngine
 from .correction import DXFCorrector, GeometryFixer, CleanupTools
 from .loop_detection import LoopDetector, PathAnalyzer, LoopVisualizer
 from .profile_management import ProfileManager
+from .profile_management.feature_calculator import AdvancedFeatureCalculator
+from .profile_management.profile_database import ProfileDatabase
 
 
 class ProcessingWorker(QThread):
@@ -85,6 +90,8 @@ class CADWidget(QWidget):
         self.path_analyzer = PathAnalyzer()
         self.loop_visualizer = LoopVisualizer(self.graphics_scene)
         self.profile_manager = ProfileManager()
+        self.feature_calculator = AdvancedFeatureCalculator()
+        self.profile_database = ProfileDatabase()
         
         # Worker thread for processing
         self.processing_worker = None
@@ -182,7 +189,7 @@ class CADWidget(QWidget):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(20)
+        layout.setSpacing(15)
         
         # Input Information section
         input_group = QGroupBox("Input Information")
@@ -201,35 +208,6 @@ class CADWidget(QWidget):
         
         input_group.setLayout(input_layout)
         layout.addWidget(input_group)
-        
-        # Processed Parameters section
-        params_group = QGroupBox("Processed Parameters")
-        params_layout = QFormLayout()
-        params_layout.setSpacing(8)
-        
-        # Parameter fields (read-only)
-        self.length_field = QLineEdit()
-        self.length_field.setReadOnly(True)
-        params_layout.addRow("Length:", self.length_field)
-        
-        self.width_field = QLineEdit()
-        self.width_field.setReadOnly(True)
-        params_layout.addRow("Width:", self.width_field)
-        
-        self.height_field = QLineEdit()
-        self.height_field.setReadOnly(True)
-        params_layout.addRow("Height:", self.height_field)
-        
-        self.material_field = QLineEdit()
-        self.material_field.setReadOnly(True)
-        params_layout.addRow("Material:", self.material_field)
-        
-        self.thickness_field = QLineEdit()
-        self.thickness_field.setReadOnly(True)
-        params_layout.addRow("Thickness:", self.thickness_field)
-        
-        params_group.setLayout(params_layout)
-        layout.addWidget(params_group)
         
         # Actions section
         actions_group = QGroupBox("Actions")
@@ -264,8 +242,26 @@ class CADWidget(QWidget):
         actions_group.setLayout(actions_layout)
         layout.addWidget(actions_group)
         
-        # Add stretch to push everything to the top
-        layout.addStretch()
+        # Processed Parameters section with tree view
+        params_group = QGroupBox("Processed Parameters")
+        params_layout = QVBoxLayout()
+        
+        # Create tree widget for parameters
+        self.params_tree = QTreeWidget()
+        self.params_tree.setHeaderLabels(["Parameter", "Value", "Unit"])
+        self.params_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.params_tree.setAlternatingRowColors(True)
+        self.params_tree.setRootIsDecorated(True)
+        
+        # Create scroll area for the tree
+        scroll_area = QScrollArea()
+        scroll_area.setWidget(self.params_tree)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setMinimumHeight(300)
+        
+        params_layout.addWidget(scroll_area)
+        params_group.setLayout(params_layout)
+        layout.addWidget(params_group)
         
         # Apply theme styling
         self._apply_control_panel_styling()
@@ -307,6 +303,38 @@ class CADWidget(QWidget):
                        self.process_btn, self.upload_profile_btn]:
                 btn.setStyleSheet(button_style)
             
+            # Tree widget styling
+            tree_style = f"""
+                QTreeWidget {{
+                    background-color: {colors['surface'].name()};
+                    color: {colors['text'].name()};
+                    border: 1px solid {'#555' if dark_mode else '#ddd'};
+                    border-radius: 4px;
+                    selection-background-color: {colors['primary'].lighter(150).name()};
+                }}
+                QTreeWidget::item {{
+                    padding: 4px;
+                    border-bottom: 1px solid {'#444' if dark_mode else '#eee'};
+                }}
+                QTreeWidget::item:selected {{
+                    background-color: {colors['primary'].name()};
+                    color: white;
+                }}
+                QTreeWidget::item:hover {{
+                    background-color: {colors['primary'].lighter(180).name()};
+                }}
+                QHeaderView::section {{
+                    background-color: {colors['primary'].name()};
+                    color: white;
+                    padding: 8px;
+                    border: none;
+                    font-weight: bold;
+                }}
+            """
+            
+            if hasattr(self, 'params_tree'):
+                self.params_tree.setStyleSheet(tree_style)
+            
             # Input field styling
             input_style = f"""
                 QLineEdit {{
@@ -326,8 +354,7 @@ class CADWidget(QWidget):
             """
             
             # Apply to all input fields
-            for field in [self.sketch_number_field, self.profile_number_field, self.length_field,
-                         self.width_field, self.height_field, self.material_field, self.thickness_field]:
+            for field in [self.sketch_number_field, self.profile_number_field]:
                 field.setStyleSheet(input_style)
             
             # Status label styling
@@ -416,27 +443,14 @@ class CADWidget(QWidget):
             return
         
         try:
-            # Get basic file info
-            msp = self.current_doc.modelspace()
-            entities = list(msp)
+            # Clear the parameters tree when a new file is loaded
+            self.params_tree.clear()
             
-            # Calculate basic dimensions
-            if entities:
-                try:
-                    extents = msp.get_extents()
-                    if extents:
-                        width = extents.max.x - extents.min.x
-                        height = extents.max.y - extents.min.y
-                        
-                        self.width_field.setText(f"{width:.2f}")
-                        self.height_field.setText(f"{height:.2f}")
-                except:
-                    pass
-            
-            # Set default values for other fields
-            self.length_field.setText("N/A")
-            self.material_field.setText("Unknown")
-            self.thickness_field.setText("N/A")
+            # Add a placeholder item
+            placeholder_item = QTreeWidgetItem(self.params_tree)
+            placeholder_item.setText(0, "Click 'Process' to calculate parameters")
+            placeholder_item.setText(1, "")
+            placeholder_item.setText(2, "")
             
         except Exception as e:
             print(f"Error updating file info: {e}")
@@ -508,27 +522,31 @@ class CADWidget(QWidget):
         self.status_label.setText("Processing DXF file...")
         
         try:
-            # Extract features
-            self.feature_extractor.set_document(self.current_doc)
-            features = self.feature_extractor.extract_geometric_features()
+            print("Starting DXF processing...")
             
-            # Analyze the file
-            self.analysis_engine.set_document(self.current_doc)
-            analysis = self.analysis_engine.analyze_dxf()
+            # Use the advanced feature calculator
+            self.feature_calculator.set_document(self.current_doc)
+            features = self.feature_calculator.calculate_all_features()
             
-            # Update parameter fields with extracted data
-            if features and 'overall' in features:
-                overall = features['overall']
-                if 'dimensions' in overall:
-                    dims = overall['dimensions']
-                    self.length_field.setText(f"{dims.get('length', 0):.2f}")
-                    self.width_field.setText(f"{dims.get('width', 0):.2f}")
-                    self.height_field.setText(f"{dims.get('height', 0):.2f}")
+            print(f"Features calculated: {len(features)}")
+            if features:
+                print("Feature keys:", list(features.keys())[:10])  # Show first 10 keys
+            
+            # Update the parameters tree with calculated features
+            self._update_parameters_tree(features)
             
             self.status_label.setText("Processing completed")
-            QMessageBox.information(self, "Processing Complete", "DXF file processed successfully")
+            
+            if len(features) > 0:
+                QMessageBox.information(self, "Processing Complete", 
+                                      f"DXF file processed successfully. {len(features)} features calculated.")
+            else:
+                QMessageBox.warning(self, "Processing Complete", 
+                                  "DXF file processed but no features could be calculated. Check console for details.")
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(self, "Error", f"Failed to process DXF: {str(e)}")
             self.status_label.setText("Error processing file")
 
@@ -547,34 +565,227 @@ class CADWidget(QWidget):
             return
         
         try:
-            # Create profile data
-            profile_data = {
-                'name': f"Profile_{profile_number}",
-                'description': f"Profile from sketch {sketch_number}",
-                'category': 'Custom',
-                'sketch_number': sketch_number,
-                'profile_number': profile_number,
-                'source_file': self.current_file,
-                'parameters': {
-                    'length': self.length_field.text(),
-                    'width': self.width_field.text(),
-                    'height': self.height_field.text(),
-                    'material': self.material_field.text(),
-                    'thickness': self.thickness_field.text()
-                }
+            # Extract parameters from the tree
+            parameters = self._extract_parameters_from_tree()
+            
+            # Create metadata
+            metadata = {
+                'Sketch Number': sketch_number,
+                'Profile Number': profile_number,
+                'Input Filename': os.path.basename(self.current_file),
+                'Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'Processing Status': 'Success',
+                'Source File Path': self.current_file
             }
             
-            # Save profile
-            result = self.profile_manager.create_profile(profile_data)
+            # Save to database
+            success, message = self.profile_database.save_profile(metadata, parameters)
             
-            if result.get('success'):
-                QMessageBox.information(self, "Save Profile", "Profile saved successfully")
-                self.status_label.setText("Profile saved")
+            if success:
+                QMessageBox.information(self, "Save Profile", message)
+                self.status_label.setText("Profile saved to database")
             else:
-                QMessageBox.critical(self, "Save Profile", f"Failed to save profile: {result.get('error')}")
+                QMessageBox.critical(self, "Save Profile", message)
                 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save profile: {str(e)}")
+            # Update metadata with error information
+            if 'metadata' in locals():
+                metadata['Processing Status'] = f'Error: {str(e)}'
+                # Try to save error information
+                try:
+                    self.profile_database.save_profile(metadata, parameters)
+                except:
+                    pass
+
+    def _update_parameters_tree(self, features: Dict[str, Any]):
+        """Update the parameters tree with calculated features."""
+        self.params_tree.clear()
+        
+        if not features:
+            return
+        
+        # Define parameter categories and their display information
+        categories = {
+            'Basic Properties': {
+                'number_of_loops': ('Number of Loops', ''),
+                'profile_type': ('Profile Type', ''),
+                'profile_area': ('Profile Area', 'mm²'),
+                'outer_area': ('Outer Area', 'mm²'),
+                'inner_area': ('Inner Area', 'mm²'),
+                'hollow_ratio': ('Hollow Ratio', ''),
+                'outer_perimeter': ('Outer Perimeter', 'mm'),
+                'total_perimeter': ('Total Perimeter', 'mm'),
+                'number_of_mandrels': ('Number of Mandrels', ''),
+            },
+            'Dimensions': {
+                'bounding_box_width': ('Bounding Box Width', 'mm'),
+                'bounding_box_height': ('Bounding Box Height', 'mm'),
+                'bounding_box_area': ('Bounding Box Area', 'mm²'),
+                'max_width': ('Max Width', 'mm'),
+                'max_height': ('Max Height', 'mm'),
+                'aspect_ratio': ('Aspect Ratio', ''),
+            },
+            'Extrusion Ratios': {
+                'er_p22': ('ER for P22', ''),
+                'er_p40': ('ER for P40', ''),
+                'er_p55': ('ER for P55', ''),
+                'holes_p22': ('Holes for P22', ''),
+                'holes_p40': ('Holes for P40', ''),
+                'holes_p55': ('Holes for P55', ''),
+            },
+            'Geometric Properties': {
+                'compactness': ('Compactness', ''),
+                'solidity': ('Solidity', ''),
+                'ccd': ('Circumscribing Circle Diameter', 'mm'),
+                'min_radius_outer': ('Min Radius (Outer)', 'mm'),
+                'max_radius_outer': ('Max Radius (Outer)', 'mm'),
+            },
+            'Wall Thickness': {
+                'max_wall_thickness': ('Max Wall Thickness', 'mm'),
+                'min_wall_thickness': ('Min Wall Thickness', 'mm'),
+                'avg_wall_thickness': ('Average Wall Thickness', 'mm'),
+                'wall_thickness_variability': ('Wall Thickness Variability', 'mm'),
+            },
+            'Moments of Inertia': {
+                'moment_of_inertia_x': ('Moment of Inertia (Ix)', 'mm⁴'),
+                'moment_of_inertia_y': ('Moment of Inertia (Iy)', 'mm⁴'),
+                'polar_moment_of_inertia': ('Polar Moment of Inertia', 'mm⁴'),
+                'product_of_inertia': ('Product of Inertia', 'mm⁴'),
+            },
+            'Distance Metrics': {
+                'euclidean_distance': ('Euclidean Distance', ''),
+                'cosine_similarity': ('Cosine Similarity', ''),
+            },
+            'Mass Vectors': {
+                'mass_vector_top_left': ('Top-Left Quadrant', ''),
+                'mass_vector_top_right': ('Top-Right Quadrant', ''),
+                'mass_vector_bottom_left': ('Bottom-Left Quadrant', ''),
+                'mass_vector_bottom_right': ('Bottom-Right Quadrant', ''),
+            },
+            'Complexity Factors': {
+                'complexity_factor_c1': ('C1 (Ps/As)', ''),
+                'complexity_factor_c2': ('C2 (Ps/Ws)', ''),
+                'complexity_factor_c3': ('C3 (CCD/Tm)', ''),
+                'complexity_factor_c4': ('C4 (Groover)', ''),
+                'complexity_factor_c5': ('C5 (Qamar)', ''),
+            }
+        }
+        
+        # Add Fourier descriptors
+        fourier_category = {}
+        for i in range(1, 11):
+            key = f'fourier_descriptor_{i}'
+            fourier_category[key] = (f'Fourier Descriptor {i}', '')
+        categories['Fourier Descriptors'] = fourier_category
+        
+        # Create tree items for each category
+        for category_name, params in categories.items():
+            category_item = QTreeWidgetItem(self.params_tree)
+            category_item.setText(0, category_name)
+            category_item.setExpanded(True)
+            
+            # Set category item styling
+            font = category_item.font(0)
+            font.setBold(True)
+            category_item.setFont(0, font)
+            
+            for param_key, (param_name, unit) in params.items():
+                if param_key in features:
+                    value = features[param_key]
+                    
+                    # Format the value
+                    if isinstance(value, float):
+                        if abs(value) < 0.001:
+                            formatted_value = f"{value:.6f}"
+                        elif abs(value) < 1:
+                            formatted_value = f"{value:.4f}"
+                        else:
+                            formatted_value = f"{value:.2f}"
+                    else:
+                        formatted_value = str(value)
+                    
+                    param_item = QTreeWidgetItem(category_item)
+                    param_item.setText(0, param_name)
+                    param_item.setText(1, formatted_value)
+                    param_item.setText(2, unit)
+        
+        # Handle mandrel features separately
+        mandrel_features = {k: v for k, v in features.items() if k.startswith('mandrel_')}
+        if mandrel_features:
+            mandrel_category = QTreeWidgetItem(self.params_tree)
+            mandrel_category.setText(0, "Mandrel Analysis")
+            mandrel_category.setExpanded(True)
+            
+            font = mandrel_category.font(0)
+            font.setBold(True)
+            mandrel_category.setFont(0, font)
+            
+            for mandrel_key, mandrel_data in mandrel_features.items():
+                mandrel_item = QTreeWidgetItem(mandrel_category)
+                mandrel_item.setText(0, mandrel_key.replace('_', ' ').title())
+                mandrel_item.setExpanded(False)
+                
+                mandrel_params = {
+                    'area': ('Area', 'mm²'),
+                    'perimeter': ('Perimeter', 'mm'),
+                    'compactness': ('Compactness', ''),
+                    'solidity': ('Solidity', ''),
+                    'aspect_ratio': ('Aspect Ratio', ''),
+                    'distance_from_cog_to_centroid': ('Distance from COG to Centroid', 'mm'),
+                    'thickness_std_plus_x': ('Thickness Std (+X)', 'mm'),
+                    'thickness_std_plus_y': ('Thickness Std (+Y)', 'mm'),
+                    'thickness_std_minus_x': ('Thickness Std (-X)', 'mm'),
+                    'thickness_std_minus_y': ('Thickness Std (-Y)', 'mm'),
+                }
+                
+                for param_key, (param_name, unit) in mandrel_params.items():
+                    if param_key in mandrel_data:
+                        value = mandrel_data[param_key]
+                        
+                        if isinstance(value, float):
+                            formatted_value = f"{value:.4f}"
+                        else:
+                            formatted_value = str(value)
+                        
+                        param_item = QTreeWidgetItem(mandrel_item)
+                        param_item.setText(0, param_name)
+                        param_item.setText(1, formatted_value)
+                        param_item.setText(2, unit)
+
+    def _extract_parameters_from_tree(self) -> Dict[str, Any]:
+        """Extract all parameters from the tree widget."""
+        parameters = {}
+        
+        root = self.params_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            category_item = root.child(i)
+            category_name = category_item.text(0)
+            
+            category_params = {}
+            for j in range(category_item.childCount()):
+                param_item = category_item.child(j)
+                param_name = param_item.text(0)
+                param_value = param_item.text(1)
+                param_unit = param_item.text(2)
+                
+                # Try to convert to appropriate type
+                try:
+                    if '.' in param_value:
+                        param_value = float(param_value)
+                    elif param_value.isdigit():
+                        param_value = int(param_value)
+                except ValueError:
+                    pass  # Keep as string
+                
+                category_params[param_name] = {
+                    'value': param_value,
+                    'unit': param_unit
+                }
+            
+            parameters[category_name] = category_params
+        
+        return parameters
 
     def zoom_in(self):
         """Zoom in the view."""

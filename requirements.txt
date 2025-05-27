@@ -3,13 +3,15 @@ ezdxf>=1.4.1       # DXF file handling
 numpy>=2.2.5      # Numerical computations
 matplotlib>=3.10.3  # Basic plotting
 scipy>=1.15.3       # Scientific computing (for feature extraction)
+pandas>=2.0.0      # Data manipulation and Excel export
+openpyxl>=3.1.0    # Excel file handling
 
 # GUI dependencies
 PyQt5>=5.15.11      # Main GUI framework
 pyqtgraph>=0.13.7  # Fast plotting for DXF visualization
 
 # Image processing
-# opencv-python>=4.5.0  # For image-based comparison
+# opencv-python>=4.5.0  # For image-based comparison (optional)
 # scikit-image>=0.18.0  # Advanced image processing
 
 # Machine learning dependencies (for later phases)
