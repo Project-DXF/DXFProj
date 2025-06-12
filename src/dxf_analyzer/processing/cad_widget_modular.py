@@ -1,16 +1,10 @@
-"""
-Modular CAD Widget
-
-A modern, modular CAD widget that uses the new processing architecture
-with specialized components for different functionalities.
-"""
-
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-                            QGraphicsView, QGraphicsScene, QLabel, QGroupBox, 
+from PyQt5.QtWidgets import (QWidget, QGridLayout, QHBoxLayout, QVBoxLayout, QPushButton, 
+                            QGraphicsView, QGraphicsScene, QLabel, 
                             QFormLayout, QLineEdit, QSplitter, QMessageBox,
                             QFileDialog, QToolBar, QAction, QTextEdit, QTabWidget,
                             QProgressBar, QComboBox, QScrollArea, QTreeWidget, 
-                            QTreeWidgetItem, QHeaderView)
+                            QTreeWidgetItem, QHeaderView, QTableWidget, QStackedWidget,
+                            QGroupBox, QTableWidgetItem)
 from PyQt5.QtGui import QIcon, QBrush, QColor, QPainter, QFont, QDragEnterEvent, QDropEvent
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal
 import ezdxf
@@ -18,8 +12,8 @@ import os
 from pathlib import Path
 from typing import Dict, Any
 from datetime import datetime
+import sys
 
-# Import the new modular components
 from .viewing import DisplayManager
 from .workflow_processing import DXFProcessor, FeatureExtractor, AnalysisEngine
 from .correction import DXFCorrector, GeometryFixer, CleanupTools
@@ -50,35 +44,21 @@ class ProcessingWorker(QThread):
             self.error_occurred.emit(str(e))
 
 
-class CADWidget(QWidget):
-    """Modern modular CAD widget using the new processing architecture."""
-    
+class CADWidget(QWidget):    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
         self.current_file = None
         self.current_doc = None
-        
-        # Initialize modular components
         self._init_components()
-        
-        # Enable drag and drop
         self.setAcceptDrops(True)
-        
-        # Create UI
         self._init_ui()
-        
-        # Connect signals
         self._connect_signals()
     
     def _init_components(self):
-        """Initialize the modular processing components."""
-        # Create graphics scene and view first
         self.graphics_scene = QGraphicsScene()
         self.graphics_view = QGraphicsView()
         self.graphics_view.setScene(self.graphics_scene)
-        
-        # Initialize components
         self.display_manager = DisplayManager(self.graphics_view, self.graphics_scene)
         self.dxf_processor = DXFProcessor()
         self.feature_extractor = FeatureExtractor()
@@ -92,50 +72,33 @@ class CADWidget(QWidget):
         self.profile_manager = ProfileManager()
         self.feature_calculator = AdvancedFeatureCalculator()
         self.profile_database = ProfileDatabase()
-        
-        # Worker thread for processing
         self.processing_worker = None
     
     def _init_ui(self):
-        """Initialize the user interface."""
-        # Create main layout
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Create splitter for main areas
         splitter = QSplitter(Qt.Horizontal)
-        splitter.setHandleWidth(4)
-        
-        # Left panel (CAD viewer)
+        splitter.setHandleWidth(4)        
         viewer_panel = self._create_viewer_panel()
-        
-        # Right panel (Controls and information)
         control_panel = self._create_control_panel()
-        
-        # Add panels to splitter
         splitter.addWidget(viewer_panel)
         splitter.addWidget(control_panel)
-        splitter.setSizes([800, 400])  # Initial sizes
+        splitter.setSizes([800, 400])  
         
         main_layout.addWidget(splitter)
     
     def _create_viewer_panel(self):
-        """Create the CAD viewer panel."""
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Create toolbar
         toolbar = self._create_toolbar()
         layout.addWidget(toolbar)
         
-        # Configure graphics view
         self.graphics_view.setRenderHint(QPainter.Antialiasing)
         self.graphics_view.setDragMode(QGraphicsView.ScrollHandDrag)
         self.graphics_view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.graphics_view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
         
-        # Set background color and theme
         if self.parent and hasattr(self.parent, 'colors'):
             self.display_manager.set_background_color(self.parent.colors['background'])
             if hasattr(self.parent, 'dark_mode'):
@@ -143,30 +106,18 @@ class CADWidget(QWidget):
         
         layout.addWidget(self.graphics_view)
         
-        # Add status bar
         self.status_label = QLabel("Ready - Upload a DXF file to begin")
         layout.addWidget(self.status_label)
-        
-        # Add placeholder text
+
         self.display_manager.add_placeholder_text("Drop a DXF file here or click Upload DXF")
         
         return panel
     
     def _create_toolbar(self):
-        """Create the toolbar with actions."""
         toolbar = QToolBar()
         toolbar.setMovable(False)
         toolbar.setIconSize(QSize(24, 24))
         
-        # File operations
-        upload_action = QAction(QIcon.fromTheme("document-open"), "Upload DXF", self)
-        upload_action.setToolTip("Upload DXF File (Ctrl+O)")
-        upload_action.triggered.connect(self.upload_dxf)
-        toolbar.addAction(upload_action)
-        
-        toolbar.addSeparator()
-        
-        # View operations
         zoom_in_action = QAction(QIcon.fromTheme("zoom-in"), "Zoom In", self)
         zoom_in_action.setToolTip("Zoom In (Mouse Wheel Up)")
         zoom_in_action.triggered.connect(self.zoom_in)
@@ -185,97 +136,148 @@ class CADWidget(QWidget):
         return toolbar
     
     def _create_control_panel(self):
-        """Create the control panel with input fields and action buttons."""
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(15)
+
+        # TODO: Check with requirements        
+        # db_group = QGroupBox("Database Location")
+        # db_layout = QVBoxLayout()
+        # db_layout.setSpacing(10)
         
-        # Input Information section
+        # self.db_path_label = QLabel(f"Current: {self.profile_database.db_path}")
+        # self.db_path_label.setWordWrap(True)
+        # self.db_path_label.setStyleSheet("color: #666; font-size: 9pt;")
+        # db_layout.addWidget(self.db_path_label)
+        
+        # change_db_btn = QPushButton("Change Database Location")
+        # change_db_btn.clicked.connect(self.change_database_path)
+        # db_layout.addWidget(change_db_btn)
+        
+        # db_group.setLayout(db_layout)
+        # layout.addWidget(db_group)
+        
         input_group = QGroupBox("Input Information")
-        input_layout = QFormLayout()
-        input_layout.setSpacing(10)
-        
-        # Sketch Number field
+        input_layout = QHBoxLayout()
+
+        sketch_layout = QVBoxLayout()
+        sketch_label = QLabel("Sketch Number:")
         self.sketch_number_field = QLineEdit()
         self.sketch_number_field.setPlaceholderText("Enter sketch number")
-        input_layout.addRow("Sketch Number:", self.sketch_number_field)
-        
-        # Profile Number field  
+        sketch_layout.addWidget(sketch_label)
+        sketch_layout.addWidget(self.sketch_number_field)
+
+        profile_layout = QVBoxLayout()
+        profile_label = QLabel("Profile Number:")
         self.profile_number_field = QLineEdit()
         self.profile_number_field.setPlaceholderText("Enter profile number")
-        input_layout.addRow("Profile Number:", self.profile_number_field)
-        
+        profile_layout.addWidget(profile_label)
+        profile_layout.addWidget(self.profile_number_field)
+
+        input_layout.addLayout(sketch_layout)
+        input_layout.addLayout(profile_layout)
+
         input_group.setLayout(input_layout)
         layout.addWidget(input_group)
         
-        # Actions section
         actions_group = QGroupBox("Actions")
-        actions_layout = QVBoxLayout()
-        actions_layout.setSpacing(10)
+        actions_layout = QGridLayout()
+        actions_layout.setSpacing(5)
         
-        # Create action buttons
         self.upload_dxf_btn = QPushButton("Upload DXF")
         self.upload_dxf_btn.clicked.connect(self.upload_dxf)
-        actions_layout.addWidget(self.upload_dxf_btn)
-        
+        actions_layout.addWidget(self.upload_dxf_btn, 0, 0)
+
         self.correct_dxf_btn = QPushButton("Correct DXF")
         self.correct_dxf_btn.clicked.connect(self.correct_dxf)
         self.correct_dxf_btn.setEnabled(False)
-        actions_layout.addWidget(self.correct_dxf_btn)
+        actions_layout.addWidget(self.correct_dxf_btn, 0, 1)
         
         self.display_loops_btn = QPushButton("Display Loops")
         self.display_loops_btn.clicked.connect(self.detect_loops)
         self.display_loops_btn.setEnabled(False)
-        actions_layout.addWidget(self.display_loops_btn)
+        actions_layout.addWidget(self.display_loops_btn, 0, 2)
         
         self.process_btn = QPushButton("Process")
         self.process_btn.clicked.connect(self.process_dxf)
         self.process_btn.setEnabled(False)
-        actions_layout.addWidget(self.process_btn)
+        actions_layout.addWidget(self.process_btn, 0, 3)
         
         self.upload_profile_btn = QPushButton("Upload New Profile")
         self.upload_profile_btn.clicked.connect(self.save_profile)
         self.upload_profile_btn.setEnabled(False)
-        actions_layout.addWidget(self.upload_profile_btn)
+        actions_layout.addWidget(self.upload_profile_btn, 0, 4)
         
         actions_group.setLayout(actions_layout)
         layout.addWidget(actions_group)
-        
-        # Processed Parameters section with tree view
+
         params_group = QGroupBox("Processed Parameters")
         params_layout = QVBoxLayout()
-        
-        # Create tree widget for parameters
+
+        toolbar = QHBoxLayout()
+        expand_all_btn = QPushButton("Expand All")
+        collapse_all_btn = QPushButton("Collapse All")
+        search_box = QLineEdit()
+        search_box.setPlaceholderText("Search parameters...")
+
+        toolbar.addWidget(expand_all_btn)
+        toolbar.addWidget(collapse_all_btn)
+        toolbar.addStretch()
+        toolbar.addWidget(QLabel("Search:"))
+        toolbar.addWidget(search_box)
+
+        params_layout.addLayout(toolbar)
+
+        self.view_stack = QStackedWidget()
+
         self.params_tree = QTreeWidget()
         self.params_tree.setHeaderLabels(["Parameter", "Value", "Unit"])
         self.params_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.params_tree.setAlternatingRowColors(True)
         self.params_tree.setRootIsDecorated(True)
-        
-        # Create scroll area for the tree
-        scroll_area = QScrollArea()
-        scroll_area.setWidget(self.params_tree)
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setMinimumHeight(300)
-        
-        params_layout.addWidget(scroll_area)
+        self.params_tree.setItemsExpandable(True)
+        self.view_stack.addWidget(self.params_tree)
+
+        splitter = QSplitter(Qt.Vertical)
+        splitter.addWidget(self.view_stack)
+        params_layout.addWidget(splitter)
+
+        expand_all_btn.clicked.connect(lambda: self.params_tree.expandAll())
+        collapse_all_btn.clicked.connect(lambda: self.params_tree.collapseAll())
+        search_box.textChanged.connect(self._filter_parameters)
+
         params_group.setLayout(params_layout)
         layout.addWidget(params_group)
-        
-        # Apply theme styling
+
         self._apply_control_panel_styling()
-        
         return panel
     
+    def _filter_parameters(self, text):
+        if self.view_stack.currentIndex() == 0:  
+            self._filter_tree_items(self.params_tree.invisibleRootItem(), text.lower())
+
+    def _filter_tree_items(self, item, text):
+        visible = False
+        for i in range(item.childCount()):
+            child = item.child(i)
+            child_visible = self._filter_tree_items(child, text)
+            
+            item_text = child.text(0).lower()
+            if text in item_text or not text:
+                child_visible = True
+                
+            child.setHidden(not child_visible)
+            if child_visible:
+                visible = True
+        
+        return visible
+
     def _apply_control_panel_styling(self):
-        """Apply styling to the control panel based on current theme."""
-        # Get theme colors from parent
         if self.parent and hasattr(self.parent, 'colors') and hasattr(self.parent, 'dark_mode'):
             colors = self.parent.colors
             dark_mode = self.parent.dark_mode
             
-            # Button styling
             button_style = f"""
                 QPushButton {{
                     padding: 12px;
@@ -298,44 +300,112 @@ class CADWidget(QWidget):
                 }}
             """
             
-            # Apply to all buttons
             for btn in [self.upload_dxf_btn, self.correct_dxf_btn, self.display_loops_btn, 
-                       self.process_btn, self.upload_profile_btn]:
+                    self.process_btn, self.upload_profile_btn]:
                 btn.setStyleSheet(button_style)
             
-            # Tree widget styling
             tree_style = f"""
                 QTreeWidget {{
                     background-color: {colors['surface'].name()};
+                    alternate-background-color: {'#2a2a2a' if dark_mode else '#f8f8f8'};
                     color: {colors['text'].name()};
                     border: 1px solid {'#555' if dark_mode else '#ddd'};
                     border-radius: 4px;
-                    selection-background-color: {colors['primary'].lighter(150).name()};
+                    gridline-color: {'#444' if dark_mode else '#eee'};
+                    selection-background-color: {colors['primary'].name()};
+                    selection-color: white;
+                    font-size: 10pt;
                 }}
+                
                 QTreeWidget::item {{
-                    padding: 4px;
+                    padding: 6px 4px;
                     border-bottom: 1px solid {'#444' if dark_mode else '#eee'};
+                    color: {colors['text'].name()};
+                    background-color: transparent;
+                    font-size: 10pt;
                 }}
+                
+                QTreeWidget::item:alternate {{
+                    background-color: {'#2a2a2a' if dark_mode else '#f8f8f8'};
+                }}
+                
                 QTreeWidget::item:selected {{
                     background-color: {colors['primary'].name()};
                     color: white;
+                    border: none;
                 }}
+                
+                QTreeWidget::item:selected:active {{
+                    background-color: {colors['primary'].name()};
+                    color: white;
+                }}
+                
+                QTreeWidget::item:selected:!active {{
+                    background-color: {colors['primary'].lighter(130).name()};
+                    color: white;
+                }}
+                
                 QTreeWidget::item:hover {{
-                    background-color: {colors['primary'].lighter(180).name()};
+                    background-color: {colors['primary'].lighter(160).name() if not dark_mode else colors['primary'].darker(160).name()};
+                    color: {'white' if dark_mode else colors['text'].name()};
                 }}
+                
+                QTreeWidget::item:hover:selected {{
+                    background-color: {colors['primary'].darker(110).name()};
+                    color: white;
+                }}
+                
+                QTreeWidget::branch {{
+                    background: transparent;
+                }}
+                                
+                QTreeWidget::branch:has-children:!has-siblings:closed:hover,
+                QTreeWidget::branch:closed:has-children:has-siblings:hover,
+                QTreeWidget::branch:open:has-children:!has-siblings:hover,
+                QTreeWidget::branch:open:has-children:has-siblings:hover {{
+                    background-color: {colors['primary'].lighter(180).name()};
+                    border-radius: 2px;
+                }}
+            """
+            
+            header_style = f"""
                 QHeaderView::section {{
                     background-color: {colors['primary'].name()};
                     color: white;
-                    padding: 8px;
+                    padding: 8px 4px;
                     border: none;
+                    border-right: 1px solid {colors['primary'].darker(120).name()};
                     font-weight: bold;
+                    font-size: 10pt;
+                }}
+                
+                QHeaderView::section:hover {{
+                    background-color: {colors['primary'].lighter(110).name()};
+                }}
+                
+                QHeaderView::section:pressed {{
+                    background-color: {colors['primary'].darker(110).name()};
+                }}
+                
+                QHeaderView::section:first {{
+                    border-left: none;
+                }}
+                
+                QHeaderView::section:last {{
+                    border-right: none;
                 }}
             """
             
             if hasattr(self, 'params_tree'):
-                self.params_tree.setStyleSheet(tree_style)
+                self.params_tree.setStyleSheet(tree_style + header_style)
+                font = self.params_tree.font()
+                font.setPointSize(10)  
+                font.setWeight(QFont.Normal)  
+                self.params_tree.setFont(font)
+                
+                self.params_tree.setIndentation(20)
+                self.params_tree.setMouseTracking(True)
             
-            # Input field styling
             input_style = f"""
                 QLineEdit {{
                     padding: 8px;
@@ -346,61 +416,99 @@ class CADWidget(QWidget):
                 }}
                 QLineEdit:focus {{
                     border-color: {colors['primary'].name()};
+                    border-width: 2px;
                 }}
                 QLineEdit:read-only {{
                     background-color: {'#333' if dark_mode else '#f5f5f5'};
                     color: {'#aaa' if dark_mode else '#666'};
                 }}
-            """
-            
-            # Apply to all input fields
-            for field in [self.sketch_number_field, self.profile_number_field]:
-                field.setStyleSheet(input_style)
-            
-            # Status label styling
+                QLabel {{
+                    color: {colors['text'].name()};
+                    background-color: transparent;
+                }}
+                
+                QGroupBox {{
+                    border: 2px solid {'#555' if dark_mode else '#ddd'};
+                    border-radius: 6px;
+                    margin-top: 8px;
+                    padding-top: 10px;
+                    color: {colors['text'].name()};
+                    background-color: {colors['surface'].name()};
+                }}
+                
+                QGroupBox::title {{
+                    subcontrol-origin: margin;
+                    padding: 0 8px 0 8px;
+                    color: {colors['primary'].name()};
+                    font-weight: bold;
+                    font-size: 12pt;
+                }}
+                
+                QSplitter::handle {{
+                    background-color: {'#555' if dark_mode else '#ddd'};
+                }}
+                
+                QSplitter::handle:hover {{
+                    background-color: {colors['primary'].name()};
+                }}
+            """            
+            self.setStyleSheet(input_style)
+
             status_style = f"""
                 QLabel {{
-                    padding: 5px;
+                    padding: 8px;
                     background: {colors['surface'].name()};
                     border-top: 1px solid {'#555' if dark_mode else '#ddd'};
                     color: {colors['text'].name()};
+                    font-size: 10pt;
+                    font-weight: normal;
                 }}
             """
             self.status_label.setStyleSheet(status_style)
             
-            # Toolbar styling
             toolbar_style = f"""
                 QToolBar {{
                     spacing: 5px;
-                    padding: 5px;
+                    padding: 8px;
                     background: {colors['background'].name()};
                     border-bottom: 1px solid {'#555' if dark_mode else '#ddd'};
+                    border-radius: 4px;
                 }}
                 QToolButton {{
-                    padding: 8px;
-                    border-radius: 4px;
+                    padding: 10px;
+                    border-radius: 6px;
                     background: {colors['surface'].name()};
                     color: {colors['text'].name()};
+                    border: 1px solid {'#555' if dark_mode else '#ddd'};
+                    font-weight: bold;
+                    min-width: 24px;
+                    min-height: 24px;
                 }}
                 QToolButton:hover {{
                     background: {colors['primary'].lighter(150).name()};
+                    color: white;
+                    border-color: {colors['primary'].name()};
                 }}
                 QToolButton:pressed {{
                     background: {colors['primary'].name()};
+                    color: white;
+                    border-color: {colors['primary'].darker(120).name()};
+                }}
+                QToolButton:disabled {{
+                    background: {'#444' if dark_mode else '#f0f0f0'};
+                    color: {'#666' if dark_mode else '#999'};
+                    border-color: {'#333' if dark_mode else '#ccc'};
                 }}
             """
             
-            # Find and style the toolbar
             toolbar = self.findChild(QToolBar)
             if toolbar:
                 toolbar.setStyleSheet(toolbar_style)
-    
+
     def _connect_signals(self):
-        """Connect signals and slots."""
-        pass  # Signals are connected in individual methods
+        pass
 
     def upload_dxf(self):
-        """Handle DXF file upload."""
         file_name, _ = QFileDialog.getOpenFileName(
             self,
             "Select DXF File",
@@ -412,21 +520,12 @@ class CADWidget(QWidget):
             self.load_dxf(file_name)
 
     def load_dxf(self, filename):
-        """Load a DXF file."""
         try:
             self.current_file = filename
-            
-            # Load using display manager
             success = self.display_manager.load_dxf(filename)
-            
             if success:
-                # Load document for processing
                 self.current_doc = ezdxf.readfile(filename)
-                
-                # Update file info
                 self._update_file_info()
-                
-                # Enable processing buttons
                 self._enable_processing_buttons()
                 
                 self.status_label.setText(f"Loaded: {os.path.basename(filename)}")
@@ -438,50 +537,42 @@ class CADWidget(QWidget):
             self.status_label.setText("Error loading file")
 
     def _update_file_info(self):
-        """Update file information display."""
         if not self.current_doc:
             return
         
         try:
-            # Clear the parameters tree when a new file is loaded
             self.params_tree.clear()
             
-            # Add a placeholder item
             placeholder_item = QTreeWidgetItem(self.params_tree)
             placeholder_item.setText(0, "Click 'Process' to calculate parameters")
             placeholder_item.setText(1, "")
             placeholder_item.setText(2, "")
             
         except Exception as e:
-            print(f"Error updating file info: {e}")
+            pass
 
     def _enable_processing_buttons(self):
-        """Enable processing buttons when a file is loaded."""
         self.correct_dxf_btn.setEnabled(True)
         self.display_loops_btn.setEnabled(True)
         self.process_btn.setEnabled(True)
         self.upload_profile_btn.setEnabled(True)
 
     def correct_dxf(self):
-        """Apply DXF corrections."""
         if not self.current_doc:
             return
         
         self.status_label.setText("Applying corrections...")
         
         try:
-            # Apply corrections
             self.dxf_corrector.load_document(self.current_doc)
             results = self.dxf_corrector.correct_dxf()
             
-            # Show results
             message = f"Corrections applied:\n"
             for correction in results.get('corrections_applied', []):
                 message += f"- {correction.get('operation', 'Unknown')}: {correction.get('message', '')}\n"
             
             QMessageBox.information(self, "Corrections Applied", message)
             
-            # Refresh display
             self.display_manager.refresh_view()
             self.status_label.setText("Corrections applied")
             
@@ -490,18 +581,15 @@ class CADWidget(QWidget):
             self.status_label.setText("Error applying corrections")
 
     def detect_loops(self):
-        """Detect and highlight loops."""
         if not self.current_doc:
             return
         
         self.status_label.setText("Detecting loops...")
         
         try:
-            # Detect loops
             self.loop_detector.set_document(self.current_doc)
             loops_data = self.loop_detector.detect_loops()
             
-            # Highlight loops
             success = self.loop_visualizer.highlight_loops(loops_data)
             
             if success:
@@ -514,49 +602,33 @@ class CADWidget(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to detect loops: {str(e)}")
             self.status_label.setText("Error detecting loops")
 
-    def process_dxf(self):
-        """Process the DXF file and extract features."""
+    def process_dxf(self):  
         if not self.current_doc:
             return
         
         self.status_label.setText("Processing DXF file...")
         
         try:
-            print("Starting DXF processing...")
-            
-            # Use the advanced feature calculator
             self.feature_calculator.set_document(self.current_doc)
             features = self.feature_calculator.calculate_all_features()
-            
-            print(f"Features calculated: {len(features)}")
-            if features:
-                print("Feature keys:", list(features.keys())[:10])  # Show first 10 keys
-            
-            # Update the parameters tree with calculated features
             self._update_parameters_tree(features)
-            
             self.status_label.setText("Processing completed")
-            
             if len(features) > 0:
                 QMessageBox.information(self, "Processing Complete", 
                                       f"DXF file processed successfully. {len(features)} features calculated.")
             else:
                 QMessageBox.warning(self, "Processing Complete", 
                                   "DXF file processed but no features could be calculated. Check console for details.")
-            
+
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             QMessageBox.critical(self, "Error", f"Failed to process DXF: {str(e)}")
             self.status_label.setText("Error processing file")
 
     def save_profile(self):
-        """Save the current profile."""
         if not self.current_doc:
             QMessageBox.warning(self, "Save Profile", "Please load a DXF file first")
             return
         
-        # Get input information
         sketch_number = self.sketch_number_field.text().strip()
         profile_number = self.profile_number_field.text().strip()
         
@@ -565,10 +637,7 @@ class CADWidget(QWidget):
             return
         
         try:
-            # Extract parameters from the tree
             parameters = self._extract_parameters_from_tree()
-            
-            # Create metadata
             metadata = {
                 'Sketch Number': sketch_number,
                 'Profile Number': profile_number,
@@ -577,8 +646,6 @@ class CADWidget(QWidget):
                 'Processing Status': 'Success',
                 'Source File Path': self.current_file
             }
-            
-            # Save to database
             success, message = self.profile_database.save_profile(metadata, parameters)
             
             if success:
@@ -589,23 +656,19 @@ class CADWidget(QWidget):
                 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save profile: {str(e)}")
-            # Update metadata with error information
             if 'metadata' in locals():
                 metadata['Processing Status'] = f'Error: {str(e)}'
-                # Try to save error information
                 try:
                     self.profile_database.save_profile(metadata, parameters)
                 except:
                     pass
 
     def _update_parameters_tree(self, features: Dict[str, Any]):
-        """Update the parameters tree with calculated features."""
         self.params_tree.clear()
         
         if not features:
             return
         
-        # Define parameter categories and their display information
         categories = {
             'Basic Properties': {
                 'number_of_loops': ('Number of Loops', ''),
@@ -672,29 +735,34 @@ class CADWidget(QWidget):
             }
         }
         
-        # Add Fourier descriptors
         fourier_category = {}
         for i in range(1, 11):
             key = f'fourier_descriptor_{i}'
             fourier_category[key] = (f'Fourier Descriptor {i}', '')
         categories['Fourier Descriptors'] = fourier_category
         
-        # Create tree items for each category
         for category_name, params in categories.items():
             category_item = QTreeWidgetItem(self.params_tree)
             category_item.setText(0, category_name)
             category_item.setExpanded(True)
             
-            # Set category item styling
             font = category_item.font(0)
             font.setBold(True)
             category_item.setFont(0, font)
+            
+            if self.parent and hasattr(self.parent, 'colors'):
+                colors = self.parent.colors
+                dark_mode = hasattr(self.parent, 'dark_mode') and self.parent.dark_mode
+                
+                category_color = colors['primary'].lighter(180) if not dark_mode else colors['primary'].darker(140)
+                category_item.setBackground(0, QBrush(category_color))
+                category_item.setBackground(1, QBrush(category_color))
+                category_item.setBackground(2, QBrush(category_color))
             
             for param_key, (param_name, unit) in params.items():
                 if param_key in features:
                     value = features[param_key]
                     
-                    # Format the value
                     if isinstance(value, float):
                         if abs(value) < 0.001:
                             formatted_value = f"{value:.6f}"
@@ -709,8 +777,13 @@ class CADWidget(QWidget):
                     param_item.setText(0, param_name)
                     param_item.setText(1, formatted_value)
                     param_item.setText(2, unit)
+                    
+                    param_font = param_item.font(0)
+                    param_font.setWeight(QFont.Normal)  
+                    param_item.setFont(0, param_font)
+                    param_item.setFont(1, param_font)
+                    param_item.setFont(2, param_font)
         
-        # Handle mandrel features separately
         mandrel_features = {k: v for k, v in features.items() if k.startswith('mandrel_')}
         if mandrel_features:
             mandrel_category = QTreeWidgetItem(self.params_tree)
@@ -721,10 +794,23 @@ class CADWidget(QWidget):
             font.setBold(True)
             mandrel_category.setFont(0, font)
             
+            if self.parent and hasattr(self.parent, 'colors'):
+                colors = self.parent.colors
+                dark_mode = hasattr(self.parent, 'dark_mode') and self.parent.dark_mode
+                
+                mandrel_color = colors['secondary'].lighter(180) if not dark_mode else colors['secondary'].darker(140)
+                mandrel_category.setBackground(0, QBrush(mandrel_color))
+                mandrel_category.setBackground(1, QBrush(mandrel_color))
+                mandrel_category.setBackground(2, QBrush(mandrel_color))
+            
             for mandrel_key, mandrel_data in mandrel_features.items():
                 mandrel_item = QTreeWidgetItem(mandrel_category)
                 mandrel_item.setText(0, mandrel_key.replace('_', ' ').title())
                 mandrel_item.setExpanded(False)
+                
+                sub_font = mandrel_item.font(0)
+                sub_font.setBold(True)
+                mandrel_item.setFont(0, sub_font)
                 
                 mandrel_params = {
                     'area': ('Area', 'mm²'),
@@ -752,9 +838,14 @@ class CADWidget(QWidget):
                         param_item.setText(0, param_name)
                         param_item.setText(1, formatted_value)
                         param_item.setText(2, unit)
+                        
+                        param_font = param_item.font(0)
+                        param_font.setWeight(QFont.Normal)  
+                        param_item.setFont(0, param_font)
+                        param_item.setFont(1, param_font)
+                        param_item.setFont(2, param_font)
 
     def _extract_parameters_from_tree(self) -> Dict[str, Any]:
-        """Extract all parameters from the tree widget."""
         parameters = {}
         
         root = self.params_tree.invisibleRootItem()
@@ -769,14 +860,13 @@ class CADWidget(QWidget):
                 param_value = param_item.text(1)
                 param_unit = param_item.text(2)
                 
-                # Try to convert to appropriate type
                 try:
                     if '.' in param_value:
                         param_value = float(param_value)
                     elif param_value.isdigit():
                         param_value = int(param_value)
                 except ValueError:
-                    pass  # Keep as string
+                    pass
                 
                 category_params[param_name] = {
                     'value': param_value,
@@ -788,33 +878,36 @@ class CADWidget(QWidget):
         return parameters
 
     def zoom_in(self):
-        """Zoom in the view."""
         self.display_manager.zoom_in()
 
     def zoom_out(self):
-        """Zoom out the view."""
         self.display_manager.zoom_out()
 
     def fit_to_view(self):
-        """Fit the drawing to view."""
         self.display_manager.fit_to_view()
 
     def wheelEvent(self, event):
-        """Handle mouse wheel events for zooming."""
-        if event.angleDelta().y() > 0:
-            self.zoom_in()
+        modifiers = event.modifiers()
+
+        is_mac = sys.platform == 'darwin'
+        required_modifier = Qt.MetaModifier if is_mac else Qt.ControlModifier
+
+        if modifiers & required_modifier:
+            if event.angleDelta().y() > 0:
+                self.zoom_in()
+            else:
+                self.zoom_out()
         else:
-            self.zoom_out()
+            event.ignore()
+
 
     def dragEnterEvent(self, event: QDragEnterEvent):
-        """Handle drag enter events."""
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
             if any(url.toLocalFile().lower().endswith('.dxf') for url in urls):
                 event.acceptProposedAction()
 
     def dropEvent(self, event: QDropEvent):
-        """Handle drop events."""
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
             for url in urls:
@@ -824,13 +917,31 @@ class CADWidget(QWidget):
                     break
     
     def apply_theme(self):
-        """Apply the current theme to the widget."""
         self._apply_control_panel_styling()
         
-        # Update display manager background and theme
         if self.parent and hasattr(self.parent, 'colors'):
             self.display_manager.set_background_color(self.parent.colors['background'])
             
-            # Set theme mode for DXF rendering
             if hasattr(self.parent, 'dark_mode'):
-                self.display_manager.set_theme(self.parent.dark_mode) 
+                self.display_manager.set_theme(self.parent.dark_mode)
+
+    # TODO: Check with requirements
+    # def change_database_path(self): 
+    #     current_path = str(self.profile_database.db_path)
+    #     new_path, _ = QFileDialog.getSaveFileName(
+    #         self,
+    #         "Select New Database Location",
+    #         current_path,
+    #         "Excel Files (*.xlsx);;All Files (*.*)"
+    #     )
+        
+    #     if new_path:
+    #         if not new_path.endswith('.xlsx'):
+    #             new_path += '.xlsx'
+            
+    #         success = self.profile_database.set_db_path(new_path)
+    #         if success:
+    #             self.db_path_label.setText(f"Current: {new_path}")
+    #             QMessageBox.information(self, "Success", "Database location changed successfully")
+    #         else:
+    #             QMessageBox.critical(self, "Error", "Failed to change database location") 

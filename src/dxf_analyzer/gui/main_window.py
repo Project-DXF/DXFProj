@@ -27,29 +27,23 @@ class DXFProfileAnalyzer(QMainWindow):
         self.initUI()
         
     def initUI(self):
-        # Set window properties
         self.setWindowTitle('DXF Profile Analyzer')
         self.setGeometry(100, 100, 1200, 800)
         
-        # Create central widget and main layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         
-        # Create toolbar
         toolbar = QToolBar()
         self.addToolBar(toolbar)
         
-        # Add theme toggle
         theme_action = QAction(QIcon.fromTheme("preferences-desktop-theme"), "Toggle Dark Mode", self)
         theme_action.triggered.connect(lambda: self.toggle_theme(not self.dark_mode))
         toolbar.addAction(theme_action)
         
-        # Create tab widget
         self.tab_widget = QTabWidget()
         main_layout.addWidget(self.tab_widget)
         
-        # Create tabs
         self.create_cad_viewer_tab()
         # TODO: Uncomment when modules are restructured
         # self.create_feature_comparison_tab()
@@ -57,12 +51,9 @@ class DXFProfileAnalyzer(QMainWindow):
         # self.create_best_match_tab()
         # self.create_die_prediction_tab()
         
-        # Apply initial theme
         self.apply_theme()
         
     def apply_theme(self):
-        """Apply the current theme to the application"""
-        # Update colors based on theme
         if self.dark_mode:
             self.colors = {
                 'background': QColor('#1e1e1e'),
@@ -80,7 +71,6 @@ class DXFProfileAnalyzer(QMainWindow):
                 'text': QColor('#000000')
             }
             
-        # Set up the stylesheet
         self.setStyleSheet(f"""
             QMainWindow {{
                 background-color: {self.colors['background'].name()};
@@ -167,26 +157,20 @@ class DXFProfileAnalyzer(QMainWindow):
             }}
         """)
         
-        # Update component styles
         self.update_component_styles()
         
     def toggle_theme(self, state):
-        """Toggle between light and dark theme"""
         self.dark_mode = state
         self.apply_theme()
         
     def update_component_styles(self):
-        """Update styles for components that need special handling"""
-        # Update CAD widget theme
         if hasattr(self, 'cad_widget'):
             self.cad_widget.apply_theme()
             
     def create_cad_viewer_tab(self):
-        """Create the CAD viewer tab"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
         
-        # Create CAD widget
         self.cad_widget = CADWidget(self)
         layout.addWidget(self.cad_widget)
         
@@ -194,27 +178,22 @@ class DXFProfileAnalyzer(QMainWindow):
         
     # TODO: Uncomment when modules are restructured
     # def create_feature_comparison_tab(self):
-    #     """Create the feature comparison tab"""
     #     self.feature_comparison_tab = FeatureComparisonTab(self)
     #     self.tab_widget.addTab(self.feature_comparison_tab, "Feature Comparison")
     #     
     # def create_image_comparison_tab(self):
-    #     """Create the image comparison tab"""
     #     self.image_comparison_tab = ImageComparisonTab(self)
     #     self.tab_widget.addTab(self.image_comparison_tab, "Image Comparison")
     #     
     # def create_best_match_tab(self):
-    #     """Create the best match tab"""
     #     self.best_match_tab = BestMatchTab(self)
     #     self.tab_widget.addTab(self.best_match_tab, "Best Match")
     #     
     # def create_die_prediction_tab(self):
-    #     """Create the die prediction tab"""
     #     self.die_prediction_tab = DiePredictionTab(self)
     #     self.tab_widget.addTab(self.die_prediction_tab, "Die Prediction")
         
     def upload_dxf(self):
-        """Handle DXF file upload"""
         file_name, _ = QFileDialog.getOpenFileName(
             self,
             "Select DXF File",
@@ -226,19 +205,15 @@ class DXFProfileAnalyzer(QMainWindow):
             self.cad_widget.load_dxf(file_name)
             
     def correct_dxf(self):
-        """Handle DXF correction"""
         pass
         
     def generate_profile(self):
-        """Handle profile generation"""
         pass
         
     def process_profile(self):
-        """Handle profile processing"""
         pass
         
     def export_pdf(self):
-        """Handle PDF export"""
         pass
 
 def main():

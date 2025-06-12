@@ -98,15 +98,41 @@ class ProfileDatabase:
         
         Args:
             db_path: Optional path to the Excel database file. If not provided,
-                    will use a default location in the project's data directory.
+                    will use a default location in the user's Downloads folder.
         """
         if db_path is None:
-            # Use default location in project's data directory
-            project_root = Path(__file__).parent.parent.parent.parent
-            db_path = project_root / 'profile_database.xlsx'
+            # Use default location in user's Downloads folder
+            downloads_path = str(Path.home() / "Downloads")
+            db_path = os.path.join(downloads_path, 'profile_database.xlsx')
         
         self.db_path = Path(db_path)
         self._ensure_db_exists()
+    
+    def set_db_path(self, new_path: str) -> bool:
+        """
+        Change the database file path.
+        
+        Args:
+            new_path: New path for the database file
+            
+        Returns:
+            bool: True if path was changed successfully, False otherwise
+        """
+        try:
+            new_path = Path(new_path)
+            # Create directory if it doesn't exist
+            new_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # If database exists, move it to new location
+            if self.db_path.exists():
+                import shutil
+                shutil.move(str(self.db_path), str(new_path))
+            
+            self.db_path = new_path
+            return True
+        except Exception as e:
+            print(f"Error changing database path: {e}")
+            return False
     
     def _ensure_db_exists(self):
         """Ensure the database file exists with proper structure."""
