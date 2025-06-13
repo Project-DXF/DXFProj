@@ -13,7 +13,7 @@ This module contains components for handling DXF files, organized into specializ
 from .viewing import DXFViewer, DisplayManager
 from .workflow_processing import DXFProcessor, FeatureExtractor, AnalysisEngine
 from .correction import DXFCorrector, GeometryFixer, CleanupTools
-from .loop_detection import LoopDetector, PathAnalyzer, LoopVisualizer
+from .loop_detection import LoopDetector
 from .profile_management import ProfileManager
 
 # For backward compatibility, create a new CADWidget that uses the modular components
@@ -27,7 +27,7 @@ __all__ = [
     # Correction components
     'DXFCorrector', 'GeometryFixer', 'CleanupTools',
     # Loop detection components
-    'LoopDetector', 'PathAnalyzer', 'LoopVisualizer',
+    'LoopDetector',
     # Profile management components
     'ProfileManager',
     # Main widget

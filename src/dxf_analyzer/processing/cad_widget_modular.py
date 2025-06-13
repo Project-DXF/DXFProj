@@ -17,7 +17,7 @@ import sys
 from .viewing import DisplayManager
 from .workflow_processing import DXFProcessor, FeatureExtractor, AnalysisEngine
 from .correction import DXFCorrector, GeometryFixer, CleanupTools
-from .loop_detection import LoopDetector, PathAnalyzer, LoopVisualizer
+from .loop_detection import LoopDetector
 from .profile_management import ProfileManager
 from .profile_management.feature_calculator import AdvancedFeatureCalculator
 from .profile_management.profile_database import ProfileDatabase
@@ -67,8 +67,6 @@ class CADWidget(QWidget):
         self.geometry_fixer = GeometryFixer()
         self.cleanup_tools = CleanupTools()
         self.loop_detector = LoopDetector()
-        self.path_analyzer = PathAnalyzer()
-        self.loop_visualizer = LoopVisualizer(self.graphics_scene)
         self.profile_manager = ProfileManager()
         self.feature_calculator = AdvancedFeatureCalculator()
         self.profile_database = ProfileDatabase()
@@ -588,13 +586,10 @@ class CADWidget(QWidget):
         
         try:
             self.loop_detector.set_document(self.current_doc)
-            loops_data = self.loop_detector.detect_loops()
+            total_loops = self.loop_detector.run_visualizer()
             
-            success = self.loop_visualizer.highlight_loops(loops_data)
-            
-            if success:
-                loop_count = loops_data.get('total_loops', 0)
-                self.status_label.setText(f"Found and highlighted {loop_count} loops")
+            if total_loops > 0:
+                self.status_label.setText(f"Found and highlighted {total_loops} loops")
             else:
                 self.status_label.setText("No loops found")
                 

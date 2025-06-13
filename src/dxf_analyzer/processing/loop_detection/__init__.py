@@ -6,7 +6,6 @@ including finding closed paths and geometric loops.
 """
 
 from .loop_detector import LoopDetector
-from .path_analyzer import PathAnalyzer
-from .loop_visualizer import LoopVisualizer
 
-__all__ = ['LoopDetector', 'PathAnalyzer', 'LoopVisualizer'] 
+
+__all__ = ['LoopDetector'] 

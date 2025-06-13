@@ -1,18 +1,98 @@
-"""
-Loop Detector for DXF Files
-
-Detects loops and closed paths in DXF files using graph algorithms.
-"""
-
 import ezdxf
 from typing import Dict, List, Any, Tuple, Set
 import math
 from collections import defaultdict, deque
-
+import networkx as nx
+from shapely.geometry import Polygon
+from tkinter import filedialog
+import matplotlib.pyplot as plt
+import random
 
 class LoopDetector:
-    """Detects loops and closed paths in DXF files."""
+ 
+    def extract_edges_from_dxf(self, decimal_precision=4):
+        doc = self.current_doc
+        msp = doc.modelspace()
+        edges = []
+
+        def rounded_point(x, y):
+            return (round(x, decimal_precision), round(y, decimal_precision))
+
+        for e in msp:
+            if e.dxftype() == "LINE":
+                start = rounded_point(e.dxf.start.x, e.dxf.start.y)
+                end = rounded_point(e.dxf.end.x, e.dxf.end.y)
+                edges.append((start, end))
+
+            elif e.dxftype() == "ARC":
+                center = e.dxf.center
+                radius = e.dxf.radius
+                start_angle = math.radians(e.dxf.start_angle)
+                end_angle = math.radians(e.dxf.end_angle)
+                if end_angle < start_angle:
+                    end_angle += 2 * math.pi
+                arc_points = []
+                for angle in range(0, 101):
+                    theta = start_angle + (end_angle - start_angle) * (angle / 100)
+                    x = center.x + radius * math.cos(theta)
+                    y = center.y + radius * math.sin(theta)
+                    arc_points.append(rounded_point(x, y))
+                for i in range(len(arc_points) - 1):
+                    edges.append((arc_points[i], arc_points[i + 1]))
+
+        return edges
+
+    def build_graph(self, edges):
+        G = nx.Graph()
+        for start, end in edges:
+            G.add_edge(start, end)
+        return G
+
+    def extract_loops(self, G):
+        cycles = nx.cycle_basis(G)
+        polygons = []
+        for cycle in cycles:
+            if len(cycle) >= 3:
+                polygon = Polygon(cycle)
+                if polygon.is_valid and abs(polygon.area) > 5:  # ⬅️ Ignore tiny loops
+                    polygons.append(polygon)
+        return polygons
+
+    def classify_profile(self, polygons):
+        return "Solid" if len(polygons) == 1 else "Hollow"
+
+    def plot_loops(self, polygons):
+        fig, ax = plt.subplots()
+        loop_info = []
+        colors = ['green', 'blue', 'magenta', 'cyan', 'orange']
+
+        sorted_polygons = sorted(polygons, key=lambda p: abs(p.area), reverse=True)
+
+        for idx, poly in enumerate(sorted_polygons):
+            x, y = poly.exterior.xy
+            color = 'red' if idx == 0 else random.choice(colors)
+            ax.plot(x, y, color=color, linewidth=2)
+            loop_info.append(f"Loop {idx + 1}: Area = {abs(poly.area):.2f} mm²")
+
+        profile_type = self.classify_profile(polygons)
+        ax.set_title(f"Profile Type: {profile_type}\n" + "\n".join(loop_info), fontsize=10)
+        ax.set_aspect('equal')
+        ax.set_facecolor('black')
+        plt.show()
+
+    def run_visualizer(self):
+        edges = self.extract_edges_from_dxf()
+        G = self.build_graph(edges)
+        polygons = self.extract_loops(G)
+        if polygons:
+            self.plot_loops(polygons)
+            return len(polygons)
+        else:
+            return 0
     
+    def classify_profile(self, polygons):
+        return "Solid" if len(polygons) == 1 else "Hollow"
+
     def __init__(self):
         """Initialize the loop detector."""
         self.tolerance = 0.001
