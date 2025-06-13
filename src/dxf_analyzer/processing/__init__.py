@@ -12,7 +12,7 @@ This module contains components for handling DXF files, organized into specializ
 # Import main components from submodules
 from .viewing import DXFViewer, DisplayManager
 from .workflow_processing import DXFProcessor, FeatureExtractor, AnalysisEngine
-from .correction import DXFCorrector, GeometryFixer, CleanupTools
+from .correction import DXFCorrector
 from .loop_detection import LoopDetector
 from .profile_management import ProfileManager
 
@@ -25,7 +25,7 @@ __all__ = [
     # Workflow processing components
     'DXFProcessor', 'FeatureExtractor', 'AnalysisEngine',
     # Correction components
-    'DXFCorrector', 'GeometryFixer', 'CleanupTools',
+    'DXFCorrector',
     # Loop detection components
     'LoopDetector',
     # Profile management components

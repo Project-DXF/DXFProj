@@ -16,7 +16,7 @@ import sys
 
 from .viewing import DisplayManager
 from .workflow_processing import DXFProcessor, FeatureExtractor, AnalysisEngine
-from .correction import DXFCorrector, GeometryFixer, CleanupTools
+from .correction import DXFCorrector
 from .loop_detection import LoopDetector
 from .profile_management import ProfileManager
 from .profile_management.feature_calculator import AdvancedFeatureCalculator
@@ -63,9 +63,7 @@ class CADWidget(QWidget):
         self.dxf_processor = DXFProcessor()
         self.feature_extractor = FeatureExtractor()
         self.analysis_engine = AnalysisEngine()
-        self.dxf_corrector = DXFCorrector()
-        self.geometry_fixer = GeometryFixer()
-        self.cleanup_tools = CleanupTools()
+        self.correction = DXFCorrector()
         self.loop_detector = LoopDetector()
         self.profile_manager = ProfileManager()
         self.feature_calculator = AdvancedFeatureCalculator()
@@ -555,29 +553,42 @@ class CADWidget(QWidget):
         self.process_btn.setEnabled(True)
         self.upload_profile_btn.setEnabled(True)
 
+  
     def correct_dxf(self):
+        """Apply DXF corrections including gap connection and duplicate removal."""
         if not self.current_doc:
+            QMessageBox.warning(self, "No Document", "No DXF document loaded")
             return
         
         self.status_label.setText("Applying corrections...")
         
         try:
-            self.dxf_corrector.load_document(self.current_doc)
-            results = self.dxf_corrector.correct_dxf()
+            self.correction.load_document(self.current_doc)
+            duplicates_removed = self.correction.remove_duplicate_entities()
+            new_connections = self.correction.connect_gaps_with_lines(max_distance=0.01)
+            validation_issues = self.correction.validate_document()
+            correction_summary = self.correction.get_correction_summary()
+            message = f"Corrections Applied Successfully!\n\n{correction_summary}"
             
-            message = f"Corrections applied:\n"
-            for correction in results.get('corrections_applied', []):
-                message += f"- {correction.get('operation', 'Unknown')}: {correction.get('message', '')}\n"
+            if validation_issues:
+                message += f"\n\nValidation Warnings:\n"
+                message += "\n".join(f"• {issue}" for issue in validation_issues[:5])  
+                if len(validation_issues) > 5:
+                    message += f"\n... and {len(validation_issues) - 5} more issues"
             
             QMessageBox.information(self, "Corrections Applied", message)
             
             self.display_manager.refresh_view()
-            self.status_label.setText("Corrections applied")
+            self.status_label.setText(f"Corrections applied - {duplicates_removed} duplicates removed, {len(new_connections)} gaps connected")
+            
+        except ValueError as e:
+            QMessageBox.warning(self, "Invalid Input", f"Invalid input: {str(e)}")
+            self.status_label.setText("Invalid input for corrections")
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to apply corrections: {str(e)}")
             self.status_label.setText("Error applying corrections")
-
+            
     def detect_loops(self):
         if not self.current_doc:
             return
