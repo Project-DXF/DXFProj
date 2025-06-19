@@ -1,0 +1,101 @@
+Extract features:
+    Number of loops
+    Profile type(Solid 1 loop, Hollow -outer loop+inner loops )
+    Profile area (Area covered by outer loop –{Area of inner loops})
+    Hollow ratio (Inner Area/Total area)
+    Perimeter of profile- outer perimeter
+    CCD -
+    ER(Extrusion Ratio ) for P22 (Container Ares [ A=π105^2] /Profile Area )
+    ER for P40 (Container Ares [A=πr145^2] /Profile Area)
+    ER for P55 (Container Ares [A=π145^2] /Profile Area)
+    No of Holes for P22  ( Adjust number of holes to match  keep the ER between    40-60 for best match, or consider 30-80 )(1,2,4,6,8)
+    No of Holes for P40  ( Adjust number of holes to match  keep the ER between 40-60 for best match, or consider 30-80 )
+    No of Holes for P55 ( Adjust number of holes to match  keep the ER between 40-60 for best match, or consider 30-80 )
+    Bounding box(width*Height)
+    Max width
+    Max height
+    Number of mandrels (Internal Loops)
+    Aspect ratio
+    Profile compactness (Refer the Definitions of parameter 1)
+    Profile solidity (Refer the Definitions of parameter 2)
+    Minimum radius of outer contour
+    Max radius of outer contour
+    Max wall thickness
+    Min wall thickness
+    Wall thickness variability (Standard deviation of wall thickness)
+    Average wall thickness
+    Movement of inertia – Ix
+    Movement of inertia – Iy
+    Polar movement of inertia
+    first 10 normalized Fourier descriptors
+    Euclidian distance
+    Cosine Similarity
+    Mass Vectors by Quadrant Top-Left
+    Mass Vectors by Quadrant Top-Right
+    Mass Vectors by Quadrant Bottom-Left
+    Mass Vectors by Quadrant Bottom-Right
+    Profile Complexity factor C1 (Refer the Definitions of parameter 3)
+    Profile Complexity factor C2 (Refer the Definitions of parameter 4)
+    Profile Complexity factor C3 (Refer the Definitions of parameter 5)
+    Profile Complexity factor C4 (Refer the Definitions of parameter 6)
+    Profile Complexity factor C5 (Refer the Definitions of parameter 7)
+    Mandrel(Inner Loop ) 1 (Area, Perimeter, Compactness, solidity, Aspect ratio, Distance from COG to centroid, Std div of all thickness in +X, +Y.-X, -Y directions)
+    Mandrel 2 (Area, Perimeter, Compactness, solidity, Aspect ratio, Distance from COG to centroid, Std div of all thickness in +X, +Y.-X, -Y directions)
+    Mandrel 3 (Area, Perimeter, Compactness, solidity, Aspect ratio, Distance from COG to centroid, Std div of all thickness in +X, +Y.-X, -Y directions)
+    Mandrel 4 (Area, Perimeter, Compactness, solidity, Aspect ratio, Distance from COG to centroid, Std div of all thickness in +X, +Y.-X, -Y directions)
+
+
+-Definitions of parameters.
+1. Compactness (C)
+🔹 Formula:
+C=P/24πA 
+Where:
+P = Perimeter of the shape
+A = Area of the shape
+
+🧠 What It Measures:
+How circular or irregular a shape is
+Low C ≈ Circle-like (most compact)
+High C ≈ Irregular or elongated shapes
+
+💡 Engineering Meaning:
+A mandrel with high compactness may have long narrow paths, sharp corners, or lobes → harder to extrude, risk of unbalanced flow.
+Higher compactness → more complexity → potential die correction or scrap risk.
+2.  Solidity
+🔹 Formula:
+Solidity=Area/Convex Hull Area ​ 
+Where:
+Convex Hull is the smallest convex shape that wraps the object (like a rubber band around it)
+
+🧠 What It Measures:
+How filled in the shape is
+Detects concavities, holes, or deep indents
+
+💡 Engineering Meaning:
+A mandrel with low solidity has gaps or notches, leading to uneven material flow or thin wall sections.
+Important for detecting sharp cavities, which are hard to fill uniformly.
+3. Complexity Index C₁:
+C1=Ps/As
+Where:
+Ps: Perimeter of the extruded section (Sum of perimeter of outer loop and inner loops)
+As​: Area of the extruded section
+4. Complexity Index C₂:
+C2=Ps/Ws 
+Where:
+Ps: Perimeter of the extruded section (Sum of perimeter of outer loop and inner loops)
+Ws​: Weight per unit length
+5. Complexity Index C₃ (Form Factor):
+C3=CCD/Tm 
+Where:
+CCD: Circumscribing circle diameter
+Tm ​: Minimum wall thickness
+6. Complexity Index C₄ (Groover's Definition):
+C4=0.98+0.02(Ps/P0)^2.25 
+Where:
+Ps: Perimeter of the extruded section (Sum of perimeter of outer loop and inner loops)
+P0​: Perimeter of a round shape with the same cross-sectional area as the profile
+7. Complexity Index C₅ (Qamar’s Definition):
+C5=0.95+0.05(Ps/P0)^1.5 
+Ps: Perimeter of the extruded section (Sum of perimeter of outer loop and inner loops)
+P0​: Perimeter of a round shape with the same cross-sectional area as the profile
+
