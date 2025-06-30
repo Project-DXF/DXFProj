@@ -4,8 +4,8 @@ from PyQt5.QtWidgets import (QWidget, QGridLayout, QHBoxLayout, QVBoxLayout, QPu
                             QFileDialog, QToolBar, QAction, QTextEdit, QTabWidget,
                             QProgressBar, QComboBox, QScrollArea, QTreeWidget, 
                             QTreeWidgetItem, QHeaderView, QTableWidget, QStackedWidget,
-                            QGroupBox, QTableWidgetItem)
-from PyQt5.QtGui import QIcon, QBrush, QColor, QPainter, QFont, QDragEnterEvent, QDropEvent
+                            QGroupBox, QTableWidgetItem, QCheckBox, QTabBar)
+from PyQt5.QtGui import QIcon, QBrush, QColor, QPainter, QFont, QDragEnterEvent, QDropEvent, QCursor
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal
 import ezdxf
 import os
@@ -20,12 +20,11 @@ from .correction import DXFCorrector
 from .loop_detection import LoopDetector
 from .profile_management import ProfileManager
 from .profile_management.feature_calculator import AdvancedFeatureCalculator
-from .profile_management.profile_database import ProfileDatabase
+from ..database import ProfileDatabase
+from ..settings.theme_manager import ThemeManager
 
 
 class ProcessingWorker(QThread):
-    """Worker thread for long-running processing operations."""
-    
     progress_updated = pyqtSignal(int, str)
     processing_completed = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
@@ -50,6 +49,7 @@ class CADWidget(QWidget):
         self.parent = parent
         self.current_file = None
         self.current_doc = None
+        self.is_updating = False
         self._init_components()
         self.setAcceptDrops(True)
         self._init_ui()
@@ -80,15 +80,12 @@ class CADWidget(QWidget):
         splitter.addWidget(viewer_panel)
         splitter.addWidget(control_panel)
         splitter.setSizes([800, 400])  
-        
         main_layout.addWidget(splitter)
     
     def _create_viewer_panel(self):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
-        toolbar = self._create_toolbar()
-        layout.addWidget(toolbar)
         
         self.graphics_view.setRenderHint(QPainter.Antialiasing)
         self.graphics_view.setDragMode(QGraphicsView.ScrollHandDrag)
@@ -109,51 +106,12 @@ class CADWidget(QWidget):
         
         return panel
     
-    def _create_toolbar(self):
-        toolbar = QToolBar()
-        toolbar.setMovable(False)
-        toolbar.setIconSize(QSize(24, 24))
-        
-        zoom_in_action = QAction(QIcon.fromTheme("zoom-in"), "Zoom In", self)
-        zoom_in_action.setToolTip("Zoom In (Mouse Wheel Up)")
-        zoom_in_action.triggered.connect(self.zoom_in)
-        toolbar.addAction(zoom_in_action)
-        
-        zoom_out_action = QAction(QIcon.fromTheme("zoom-out"), "Zoom Out", self)
-        zoom_out_action.setToolTip("Zoom Out (Mouse Wheel Down)")
-        zoom_out_action.triggered.connect(self.zoom_out)
-        toolbar.addAction(zoom_out_action)
-        
-        fit_action = QAction(QIcon.fromTheme("zoom-fit-best"), "Fit to View", self)
-        fit_action.setToolTip("Fit Drawing to View (Ctrl+0)")
-        fit_action.triggered.connect(self.fit_to_view)
-        toolbar.addAction(fit_action)
-        
-        return toolbar
-    
     def _create_control_panel(self):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(15)
 
-        # TODO: Check with requirements        
-        # db_group = QGroupBox("Database Location")
-        # db_layout = QVBoxLayout()
-        # db_layout.setSpacing(10)
-        
-        # self.db_path_label = QLabel(f"Current: {self.profile_database.db_path}")
-        # self.db_path_label.setWordWrap(True)
-        # self.db_path_label.setStyleSheet("color: #666; font-size: 9pt;")
-        # db_layout.addWidget(self.db_path_label)
-        
-        # change_db_btn = QPushButton("Change Database Location")
-        # change_db_btn.clicked.connect(self.change_database_path)
-        # db_layout.addWidget(change_db_btn)
-        
-        # db_group.setLayout(db_layout)
-        # layout.addWidget(db_group)
-        
         input_group = QGroupBox("Input Information")
         input_layout = QHBoxLayout()
 
@@ -212,13 +170,13 @@ class CADWidget(QWidget):
         params_layout = QVBoxLayout()
 
         toolbar = QHBoxLayout()
-        expand_all_btn = QPushButton("Expand All")
-        collapse_all_btn = QPushButton("Collapse All")
+        self.expand_all_btn = QPushButton("Expand All")
+        self.collapse_all_btn = QPushButton("Collapse All")
         search_box = QLineEdit()
         search_box.setPlaceholderText("Search parameters...")
 
-        toolbar.addWidget(expand_all_btn)
-        toolbar.addWidget(collapse_all_btn)
+        toolbar.addWidget(self.expand_all_btn)
+        toolbar.addWidget(self.collapse_all_btn)
         toolbar.addStretch()
         toolbar.addWidget(QLabel("Search:"))
         toolbar.addWidget(search_box)
@@ -239,8 +197,8 @@ class CADWidget(QWidget):
         splitter.addWidget(self.view_stack)
         params_layout.addWidget(splitter)
 
-        expand_all_btn.clicked.connect(lambda: self.params_tree.expandAll())
-        collapse_all_btn.clicked.connect(lambda: self.params_tree.collapseAll())
+        self.expand_all_btn.clicked.connect(lambda: self.params_tree.expandAll())
+        self.collapse_all_btn.clicked.connect(lambda: self.params_tree.collapseAll())
         search_box.textChanged.connect(self._filter_parameters)
 
         params_group.setLayout(params_layout)
@@ -274,6 +232,8 @@ class CADWidget(QWidget):
             colors = self.parent.colors
             dark_mode = self.parent.dark_mode
             
+            interactive_style = ""
+            
             button_style = f"""
                 QPushButton {{
                     padding: 12px;
@@ -281,7 +241,7 @@ class CADWidget(QWidget):
                     font-weight: bold;
                     min-height: 20px;
                     background-color: {colors['primary'].name()};
-                    color: {'white' if dark_mode else 'white'};
+                    color: white;
                     border: none;
                 }}
                 QPushButton:hover {{
@@ -296,10 +256,6 @@ class CADWidget(QWidget):
                 }}
             """
             
-            for btn in [self.upload_dxf_btn, self.correct_dxf_btn, self.display_loops_btn, 
-                    self.process_btn, self.upload_profile_btn]:
-                btn.setStyleSheet(button_style)
-            
             tree_style = f"""
                 QTreeWidget {{
                     background-color: {colors['surface'].name()};
@@ -307,38 +263,13 @@ class CADWidget(QWidget):
                     color: {colors['text'].name()};
                     border: 1px solid {'#555' if dark_mode else '#ddd'};
                     border-radius: 4px;
-                    gridline-color: {'#444' if dark_mode else '#eee'};
                     selection-background-color: {colors['primary'].name()};
                     selection-color: white;
-                    font-size: 10pt;
                 }}
                 
                 QTreeWidget::item {{
                     padding: 6px 4px;
                     border-bottom: 1px solid {'#444' if dark_mode else '#eee'};
-                    color: {colors['text'].name()};
-                    background-color: transparent;
-                    font-size: 10pt;
-                }}
-                
-                QTreeWidget::item:alternate {{
-                    background-color: {'#2a2a2a' if dark_mode else '#f8f8f8'};
-                }}
-                
-                QTreeWidget::item:selected {{
-                    background-color: {colors['primary'].name()};
-                    color: white;
-                    border: none;
-                }}
-                
-                QTreeWidget::item:selected:active {{
-                    background-color: {colors['primary'].name()};
-                    color: white;
-                }}
-                
-                QTreeWidget::item:selected:!active {{
-                    background-color: {colors['primary'].lighter(130).name()};
-                    color: white;
                 }}
                 
                 QTreeWidget::item:hover {{
@@ -346,19 +277,12 @@ class CADWidget(QWidget):
                     color: {'white' if dark_mode else colors['text'].name()};
                 }}
                 
-                QTreeWidget::item:hover:selected {{
-                    background-color: {colors['primary'].darker(110).name()};
+                QTreeWidget::item:selected {{
+                    background-color: {colors['primary'].name()};
                     color: white;
                 }}
                 
-                QTreeWidget::branch {{
-                    background: transparent;
-                }}
-                                
-                QTreeWidget::branch:has-children:!has-siblings:closed:hover,
-                QTreeWidget::branch:closed:has-children:has-siblings:hover,
-                QTreeWidget::branch:open:has-children:!has-siblings:hover,
-                QTreeWidget::branch:open:has-children:has-siblings:hover {{
+                QTreeWidget::branch:has-children:hover {{
                     background-color: {colors['primary'].lighter(180).name()};
                     border-radius: 2px;
                 }}
@@ -372,35 +296,12 @@ class CADWidget(QWidget):
                     border: none;
                     border-right: 1px solid {colors['primary'].darker(120).name()};
                     font-weight: bold;
-                    font-size: 10pt;
                 }}
                 
                 QHeaderView::section:hover {{
                     background-color: {colors['primary'].lighter(110).name()};
                 }}
-                
-                QHeaderView::section:pressed {{
-                    background-color: {colors['primary'].darker(110).name()};
-                }}
-                
-                QHeaderView::section:first {{
-                    border-left: none;
-                }}
-                
-                QHeaderView::section:last {{
-                    border-right: none;
-                }}
             """
-            
-            if hasattr(self, 'params_tree'):
-                self.params_tree.setStyleSheet(tree_style + header_style)
-                font = self.params_tree.font()
-                font.setPointSize(10)  
-                font.setWeight(QFont.Normal)  
-                self.params_tree.setFont(font)
-                
-                self.params_tree.setIndentation(20)
-                self.params_tree.setMouseTracking(True)
             
             input_style = f"""
                 QLineEdit {{
@@ -414,53 +315,7 @@ class CADWidget(QWidget):
                     border-color: {colors['primary'].name()};
                     border-width: 2px;
                 }}
-                QLineEdit:read-only {{
-                    background-color: {'#333' if dark_mode else '#f5f5f5'};
-                    color: {'#aaa' if dark_mode else '#666'};
-                }}
-                QLabel {{
-                    color: {colors['text'].name()};
-                    background-color: transparent;
-                }}
-                
-                QGroupBox {{
-                    border: 2px solid {'#555' if dark_mode else '#ddd'};
-                    border-radius: 6px;
-                    margin-top: 8px;
-                    padding-top: 10px;
-                    color: {colors['text'].name()};
-                    background-color: {colors['surface'].name()};
-                }}
-                
-                QGroupBox::title {{
-                    subcontrol-origin: margin;
-                    padding: 0 8px 0 8px;
-                    color: {colors['primary'].name()};
-                    font-weight: bold;
-                    font-size: 12pt;
-                }}
-                
-                QSplitter::handle {{
-                    background-color: {'#555' if dark_mode else '#ddd'};
-                }}
-                
-                QSplitter::handle:hover {{
-                    background-color: {colors['primary'].name()};
-                }}
-            """            
-            self.setStyleSheet(input_style)
-
-            status_style = f"""
-                QLabel {{
-                    padding: 8px;
-                    background: {colors['surface'].name()};
-                    border-top: 1px solid {'#555' if dark_mode else '#ddd'};
-                    color: {colors['text'].name()};
-                    font-size: 10pt;
-                    font-weight: normal;
-                }}
             """
-            self.status_label.setStyleSheet(status_style)
             
             toolbar_style = f"""
                 QToolBar {{
@@ -476,7 +331,6 @@ class CADWidget(QWidget):
                     background: {colors['surface'].name()};
                     color: {colors['text'].name()};
                     border: 1px solid {'#555' if dark_mode else '#ddd'};
-                    font-weight: bold;
                     min-width: 24px;
                     min-height: 24px;
                 }}
@@ -490,12 +344,21 @@ class CADWidget(QWidget):
                     color: white;
                     border-color: {colors['primary'].darker(120).name()};
                 }}
-                QToolButton:disabled {{
-                    background: {'#444' if dark_mode else '#f0f0f0'};
-                    color: {'#666' if dark_mode else '#999'};
-                    border-color: {'#333' if dark_mode else '#ccc'};
-                }}
             """
+            
+            self.setStyleSheet(interactive_style + input_style)
+            
+            for btn in [self.upload_dxf_btn, self.correct_dxf_btn, self.display_loops_btn, 
+                    self.process_btn, self.upload_profile_btn, self.expand_all_btn, self.collapse_all_btn]:
+                btn.setStyleSheet(button_style)
+            
+            if hasattr(self, 'params_tree'):
+                self.params_tree.setStyleSheet(tree_style + header_style)
+                font = self.params_tree.font()
+                font.setPointSize(10)
+                self.params_tree.setFont(font)
+                self.params_tree.setIndentation(20)
+                self.params_tree.setMouseTracking(True)
             
             toolbar = self.findChild(QToolBar)
             if toolbar:
@@ -516,6 +379,10 @@ class CADWidget(QWidget):
             self.load_dxf(file_name)
 
     def load_dxf(self, filename):
+        if self.is_updating:
+            return
+            
+        self.is_updating = True
         try:
             self.current_file = filename
             success = self.display_manager.load_dxf(filename)
@@ -525,12 +392,17 @@ class CADWidget(QWidget):
                 self._enable_processing_buttons()
                 
                 self.status_label.setText(f"Loaded: {os.path.basename(filename)}")
+                
+                if self.parent and hasattr(self.parent, 'event_manager'):
+                    self.parent.event_manager.update_dxf(filename, self.current_doc)
             else:
                 self.status_label.setText("Failed to load DXF file")
                 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load DXF file: {str(e)}")
             self.status_label.setText("Error loading file")
+        finally:
+            self.is_updating = False
 
     def _update_file_info(self):
         if not self.current_doc:
@@ -555,7 +427,6 @@ class CADWidget(QWidget):
 
   
     def correct_dxf(self):
-        """Apply DXF corrections including gap connection and duplicate removal."""
         if not self.current_doc:
             QMessageBox.warning(self, "No Document", "No DXF document loaded")
             return
@@ -930,24 +801,6 @@ class CADWidget(QWidget):
             
             if hasattr(self.parent, 'dark_mode'):
                 self.display_manager.set_theme(self.parent.dark_mode)
-
-    # TODO: Check with requirements
-    # def change_database_path(self): 
-    #     current_path = str(self.profile_database.db_path)
-    #     new_path, _ = QFileDialog.getSaveFileName(
-    #         self,
-    #         "Select New Database Location",
-    #         current_path,
-    #         "Excel Files (*.xlsx);;All Files (*.*)"
-    #     )
-        
-    #     if new_path:
-    #         if not new_path.endswith('.xlsx'):
-    #             new_path += '.xlsx'
-            
-    #         success = self.profile_database.set_db_path(new_path)
-    #         if success:
-    #             self.db_path_label.setText(f"Current: {new_path}")
-    #             QMessageBox.information(self, "Success", "Database location changed successfully")
-    #         else:
-    #             QMessageBox.critical(self, "Error", "Failed to change database location") 
+                
+        if not self.current_file:
+            self.display_manager.add_placeholder_text("Drop a DXF file here or click Upload DXF")

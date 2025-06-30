@@ -22,10 +22,14 @@ class DisplayManager:
         self.graphics_view.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
     
     def set_background_color(self, color: QColor):
-        self.graphics_view.setBackgroundBrush(QBrush(color))
+        brush = QBrush(color)
+        self.graphics_view.setBackgroundBrush(brush)
+        self.graphics_scene.setBackgroundBrush(brush)
     
     def set_theme(self, dark_mode: bool):
         self.dark_mode = dark_mode
+        bg_color = QColor('#1e1e1e') if dark_mode else QColor('#ffffff')
+        self.set_background_color(bg_color)
         
         if self.current_file:
             self.load_dxf(self.current_file)
@@ -148,9 +152,9 @@ class DisplayManager:
             if self.dark_mode:
                 placeholder_label.setStyleSheet("""
                     QLabel {
-                        color: #ccc;
-                        background-color: rgba(60, 60, 60, 0.8);
-                        border: 2px dashed #666;
+                        color: #ffffff;
+                        background-color: rgba(30, 30, 30, 0.9);
+                        border: 2px dashed #ffffff;
                         border-radius: 8px;
                         padding: 20px;
                         margin: 20px;
@@ -159,9 +163,9 @@ class DisplayManager:
             else:
                 placeholder_label.setStyleSheet("""
                     QLabel {
-                        color: #666;
-                        background-color: rgba(240, 240, 240, 0.8);
-                        border: 2px dashed #ccc;
+                        color: #333333;
+                        background-color: rgba(255, 255, 255, 0.95);
+                        border: 2px dashed #333333;
                         border-radius: 8px;
                         padding: 20px;
                         margin: 20px;

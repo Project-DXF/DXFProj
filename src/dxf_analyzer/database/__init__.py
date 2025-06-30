@@ -1,5 +1,3 @@
-"""
-Database management and data persistence components.
-"""
+from .profile_database import ProfileDatabase
 
-# Database components will be added here 
+__all__ = ['ProfileDatabase'] 

@@ -5,6 +5,8 @@ matplotlib>=3.10.3  # Basic plotting
 scipy>=1.15.3       # Scientific computing (for feature extraction)
 pandas>=2.0.0      # Data manipulation and Excel export
 openpyxl>=3.1.0    # Excel file handling
+shapely>=2.1.1
+networkx>=3.5
 
 # GUI dependencies
 PyQt5>=5.15.11      # Main GUI framework
