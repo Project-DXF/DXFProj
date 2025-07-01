@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QGraphicsView, QGraphicsScene, QMessageBox
-from PyQt5.QtGui import QBrush, QColor, QPainter
-from PyQt5.QtCore import Qt, QRectF
+from PyQt5.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF, QPainterPath
+from PyQt5.QtCore import Qt, QRectF, QPointF
 import ezdxf
 from ezdxf.addons.drawing import Frontend, RenderContext
 from ezdxf.addons.drawing.pyqt import PyQtBackend
@@ -12,6 +12,7 @@ class DisplayManager:
         self.current_doc = None
         self.current_file = None
         self.dark_mode = False
+        self.highlighted_items = []
         self._setup_graphics_view()
     
     def _setup_graphics_view(self):
@@ -27,6 +28,7 @@ class DisplayManager:
         self.graphics_scene.setBackgroundBrush(brush)
     
     def set_theme(self, dark_mode: bool):
+        self.clear_highlight()
         self.dark_mode = dark_mode
         bg_color = QColor('#1e1e1e') if dark_mode else QColor('#ffffff')
         self.set_background_color(bg_color)
@@ -35,6 +37,7 @@ class DisplayManager:
             self.load_dxf(self.current_file)
     
     def load_dxf(self, filename: str) -> bool:
+        self.clear_highlight()
         try:
             print(f"Loading DXF: {filename}")
             
@@ -181,3 +184,63 @@ class DisplayManager:
             scene_rect.width() / 2 - placeholder_label.width() / 2,
             scene_rect.height() / 2 - placeholder_label.height() / 2
         ) 
+    
+    def highlight_entities(self, entities: list, clear_existing: bool = True):
+        if clear_existing:
+            self.clear_highlight()
+
+        if not self.current_doc or not entities:
+            return
+
+        highlight_pen = QPen(QColor(Qt.yellow), 2.5)
+        highlight_pen.setCosmetic(True)
+
+        for entity in entities:
+            try:
+                if entity.dxftype() == 'LINE':
+                    start = entity.dxf.start
+                    end = entity.dxf.end
+                    item = self.graphics_scene.addLine(start.x, start.y, end.x, end.y, highlight_pen)
+                    self.highlighted_items.append(item)
+                elif entity.dxftype() == 'ARC':
+                    import math
+                    center = entity.dxf.center
+                    radius = entity.dxf.radius
+                    start_angle = math.degrees(entity.dxf.start_angle)
+                    end_angle = math.degrees(entity.dxf.end_angle)
+                    span_angle = end_angle - start_angle
+                    if span_angle < 0:
+                        span_angle += 360
+                    rect = QRectF(center.x - radius, center.y - radius, 2*radius, 2*radius)
+                    arc_item = self.graphics_scene.addEllipse(rect, highlight_pen)
+                    arc_item.setStartAngle(int(start_angle * 16))
+                    arc_item.setSpanAngle(int(span_angle * 16))
+                    self.highlighted_items.append(arc_item)
+                elif entity.dxftype() == 'CIRCLE':
+                    center = entity.dxf.center
+                    radius = entity.dxf.radius
+                    rect = QRectF(center.x - radius, center.y - radius, 2*radius, 2*radius)
+                    item = self.graphics_scene.addEllipse(rect, highlight_pen)
+                    self.highlighted_items.append(item)
+            except Exception as e:
+                print(f"Error highlighting entity {entity.dxftype()}: {e}")
+
+    def clear_highlight(self):
+        for item in self.highlighted_items:
+            self.graphics_scene.removeItem(item)
+        self.highlighted_items.clear()
+
+    def highlight_polyline(self, points: list, clear_existing: bool = True):
+        if clear_existing:
+            self.clear_highlight()
+        if not points or len(points) < 2:
+            return
+        highlight_pen = QPen(QColor(Qt.red), 3.0)
+        highlight_pen.setCosmetic(True)
+        path = QPainterPath()
+        path.moveTo(QPointF(points[0][0], points[0][1]))
+        for pt in points[1:]:
+            path.lineTo(QPointF(pt[0], pt[1]))
+        path.closeSubpath()
+        item = self.graphics_scene.addPath(path, highlight_pen)
+        self.highlighted_items.append(item) 

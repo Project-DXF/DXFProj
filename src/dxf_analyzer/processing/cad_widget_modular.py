@@ -153,6 +153,11 @@ class CADWidget(QWidget):
         self.display_loops_btn.setEnabled(False)
         actions_layout.addWidget(self.display_loops_btn, 0, 2)
         
+        self.clear_loops_btn = QPushButton("Clear Loop Highlights")
+        self.clear_loops_btn.clicked.connect(self.clear_loop_highlights)
+        self.clear_loops_btn.setEnabled(True)
+        actions_layout.addWidget(self.clear_loops_btn, 0, 5)
+        
         self.process_btn = QPushButton("Process")
         self.process_btn.clicked.connect(self.process_dxf)
         self.process_btn.setEnabled(False)
@@ -365,7 +370,7 @@ class CADWidget(QWidget):
                 toolbar.setStyleSheet(toolbar_style)
 
     def _connect_signals(self):
-        pass
+        self.params_tree.itemClicked.connect(self.on_parameter_item_clicked)
 
     def upload_dxf(self):
         file_name, _ = QFileDialog.getOpenFileName(
@@ -463,21 +468,36 @@ class CADWidget(QWidget):
     def detect_loops(self):
         if not self.current_doc:
             return
-        
         self.status_label.setText("Detecting loops...")
-        
         try:
             self.loop_detector.set_document(self.current_doc)
-            total_loops = self.loop_detector.run_visualizer()
-            
-            if total_loops > 0:
-                self.status_label.setText(f"Found and highlighted {total_loops} loops")
+            edges = self.loop_detector.extract_edges_from_dxf()
+            G = self.loop_detector.build_graph(edges)
+            polygons = self.loop_detector.extract_loops(G)
+            if polygons:
+                self.display_manager.clear_highlight()
+                colors = [QColor(Qt.red), QColor(Qt.blue), QColor(Qt.green), QColor(Qt.magenta), QColor(Qt.cyan), QColor(Qt.darkYellow)]
+                for idx, poly in enumerate(polygons):
+                    coords = list(poly.exterior.coords)
+                    color = colors[idx % len(colors)]
+                    self.display_manager.highlight_polyline(coords, clear_existing=False)
+                    if self.display_manager.highlighted_items:
+                        item = self.display_manager.highlighted_items[-1]
+                        pen = item.pen()
+                        pen.setColor(color)
+                        pen.setWidth(3)
+                        item.setPen(pen)
+                self.status_label.setText(f"Found and highlighted {len(polygons)} loops")
             else:
+                self.display_manager.clear_highlight()
                 self.status_label.setText("No loops found")
-                
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to detect loops: {str(e)}")
             self.status_label.setText("Error detecting loops")
+
+    def clear_loop_highlights(self):
+        self.display_manager.clear_highlight()
+        self.status_label.setText("Loop highlights cleared")
 
     def process_dxf(self):  
         if not self.current_doc:
@@ -684,6 +704,7 @@ class CADWidget(QWidget):
                 mandrel_item = QTreeWidgetItem(mandrel_category)
                 mandrel_item.setText(0, mandrel_key.replace('_', ' ').title())
                 mandrel_item.setExpanded(False)
+                mandrel_item.setData(0, Qt.UserRole, mandrel_key)
                 
                 sub_font = mandrel_item.font(0)
                 sub_font.setBold(True)
@@ -804,3 +825,48 @@ class CADWidget(QWidget):
                 
         if not self.current_file:
             self.display_manager.add_placeholder_text("Drop a DXF file here or click Upload DXF")
+
+    def on_parameter_item_clicked(self, item: QTreeWidgetItem, column: int):
+        mandrel_key = None
+        data = item.data(0, Qt.UserRole)
+        
+        if data and isinstance(data, str) and data.startswith('mandrel_'):
+            mandrel_key = data
+        else:
+            parent = item.parent()
+            if parent:
+                parent_data = parent.data(0, Qt.UserRole)
+                if parent_data and isinstance(parent_data, str) and parent_data.startswith('mandrel_'):
+                    mandrel_key = parent_data
+        
+        if mandrel_key:
+            self.highlight_mandrel(mandrel_key)
+
+    def highlight_mandrel(self, mandrel_key: str):
+        """Highlights the specified mandrel in the DXF viewer."""
+        if not hasattr(self.feature_calculator, 'mandrel_paths'):
+            self.status_label.setText("Mandrel data is not available. Please process the file first.")
+            return
+
+        mandrel_entities = self.feature_calculator.mandrel_paths.get(mandrel_key)
+        mandrel_index = None
+        if mandrel_key.startswith('mandrel_'):
+            try:
+                mandrel_index = int(mandrel_key.split('_')[1]) - 1
+            except Exception:
+                mandrel_index = None
+        mandrel_points = None
+        if mandrel_index is not None and 0 <= mandrel_index < len(self.feature_calculator.inner_loops):
+            mandrel_points = self.feature_calculator.inner_loops[mandrel_index]
+
+        if mandrel_points and hasattr(self.display_manager, 'highlight_polyline'):
+            self.display_manager.highlight_polyline(mandrel_points, clear_existing=True)
+            self.status_label.setText(f"Highlighted: {mandrel_key.replace('_', ' ').title()}")
+        elif mandrel_entities:
+            if hasattr(self.display_manager, 'highlight_entities'):
+                self.display_manager.highlight_entities(mandrel_entities, clear_existing=True)
+                self.status_label.setText(f"Highlighted: {mandrel_key.replace('_', ' ').title()}")
+            else:
+                self.status_label.setText("Highlighting feature not available in the display manager.")
+        else:
+            self.status_label.setText(f"Could not find entities for mandrel: {mandrel_key}")

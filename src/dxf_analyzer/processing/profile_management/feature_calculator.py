@@ -21,6 +21,8 @@ from scipy.fft import fft
 import pandas as pd
 from datetime import datetime
 import os
+import networkx as nx
+from shapely.geometry import LineString, Point, Polygon
 
 
 class AdvancedFeatureCalculator:
@@ -32,6 +34,7 @@ class AdvancedFeatureCalculator:
         self.outer_loop = None
         self.inner_loops = []
         self.all_loops = []
+        self.mandrel_paths = {}
         
     def set_document(self, doc: ezdxf.document.Drawing):
         """Set the DXF document to analyze."""
@@ -39,301 +42,134 @@ class AdvancedFeatureCalculator:
         self._detect_loops()
     
     def _detect_loops(self):
-        """Detect outer and inner loops in the DXF."""
         if not self.current_doc:
             return
-        
-        # This is a simplified loop detection - in practice, you'd use more sophisticated algorithms
         msp = self.current_doc.modelspace()
         all_entities = list(msp)
-        
-        # Print entity type distribution for debugging
         entity_types = {}
         for e in all_entities:
             entity_type = e.dxftype()
             entity_types[entity_type] = entity_types.get(entity_type, 0) + 1
-        
         print(f"Entity type distribution: {entity_types}")
-        
-        # Filter entities that can form loops
         entities = [e for e in all_entities if e.dxftype() in ['LINE', 'ARC', 'CIRCLE', 'POLYLINE', 'LWPOLYLINE', 'ELLIPSE', 'SPLINE']]
-        
         print(f"Found {len(entities)} entities for loop detection out of {len(all_entities)} total")
-        
-        # Extract closed paths from entities
-        self.all_loops = self._extract_closed_paths(entities)
-        
-        print(f"Extracted {len(self.all_loops)} loops")
-        
-        if self.all_loops:
-            # Sort by area - largest is outer loop
-            self.all_loops.sort(key=lambda loop: self._calculate_polygon_area(loop), reverse=True)
-            self.outer_loop = self.all_loops[0] if self.all_loops else None
-            self.inner_loops = self.all_loops[1:] if len(self.all_loops) > 1 else []
-            print(f"Outer loop has {len(self.outer_loop)} points, {len(self.inner_loops)} inner loops")
-        else:
-            print("No loops detected, will try fallback method")
-    
-    def _extract_closed_paths(self, entities) -> List[List[Tuple[float, float]]]:
-        """Extract closed paths from entities."""
-        # Simplified implementation - in practice, you'd need more sophisticated path detection
-        paths = []
-        
+        loops_with_entities = []
         for entity in entities:
+            points = []
             try:
                 if entity.dxftype() == 'CIRCLE':
-                    # Create circle as polygon
                     center = entity.dxf.center
                     radius = entity.dxf.radius
-                    points = []
-                    for i in range(36):  # 36 points for circle
+                    for i in range(36):
                         angle = i * 2 * math.pi / 36
                         x = center.x + radius * math.cos(angle)
                         y = center.y + radius * math.sin(angle)
                         points.append((x, y))
-                    paths.append(points)
-                    print(f"Added circle with {len(points)} points")
-                
+                    loops_with_entities.append({'points': points, 'entities': [entity]})
                 elif entity.dxftype() == 'LWPOLYLINE':
-                    # For LWPOLYLINE, try multiple methods
-                    points = []
-                    
-                    # Method 1: Try iterating over entity
-                    try:
-                        for point in entity:
-                            if hasattr(point, '__len__') and len(point) >= 2:
-                                points.append((float(point[0]), float(point[1])))
-                    except:
-                        pass
-                    
-                    # Method 2: Try get_points()
-                    if not points:
-                        try:
-                            for p in entity.get_points():
-                                points.append((float(p[0]), float(p[1])))
-                        except:
-                            pass
-                    
-                    # Method 3: Try accessing vertices directly
-                    if not points:
-                        try:
-                            if hasattr(entity, 'vertices'):
-                                for vertex in entity.vertices:
-                                    if hasattr(vertex, 'location'):
-                                        points.append((float(vertex.location.x), float(vertex.location.y)))
-                                    elif hasattr(vertex, '__len__') and len(vertex) >= 2:
-                                        points.append((float(vertex[0]), float(vertex[1])))
-                        except:
-                            pass
-                    
-                    if len(points) > 2:
-                        paths.append(points)
-                        print(f"Added LWPOLYLINE with {len(points)} points")
-                
+                    if entity.is_closed:
+                        pts = [(float(p[0]), float(p[1])) for p in entity.get_points()]
+                        loops_with_entities.append({'points': pts, 'entities': [entity]})
                 elif entity.dxftype() == 'POLYLINE':
-                    # For POLYLINE, get vertices using the vertices() method
-                    points = []
-                    try:
-                        for vertex in entity.vertices():
-                            points.append((float(vertex.dxf.location.x), float(vertex.dxf.location.y)))
-                    except:
-                        pass
-                    
-                    if len(points) > 2:
-                        paths.append(points)
-                        print(f"Added POLYLINE with {len(points)} points")
-                
+                    if entity.is_closed:
+                        pts = [(float(v.dxf.location.x), float(v.dxf.location.y)) for v in entity.vertices()]
+                        loops_with_entities.append({'points': pts, 'entities': [entity]})
                 elif entity.dxftype() == 'ELLIPSE':
-                    # Create ellipse as polygon
-                    try:
-                        center = entity.dxf.center
-                        major_axis = entity.dxf.major_axis
-                        ratio = entity.dxf.ratio
-                        
-                        points = []
-                        for i in range(36):
-                            angle = i * 2 * math.pi / 36
-                            # Simplified ellipse approximation
-                            x = center.x + major_axis.x * math.cos(angle)
-                            y = center.y + major_axis.y * math.sin(angle) * ratio
-                            points.append((x, y))
-                        
-                        paths.append(points)
-                        print(f"Added ELLIPSE with {len(points)} points")
-                    except:
-                        pass
-                
+                    center = entity.dxf.center
+                    major_axis = entity.dxf.major_axis
+                    ratio = entity.dxf.ratio
+                    for i in range(36):
+                        angle = i * 2 * math.pi / 36
+                        x = center.x + major_axis.x * math.cos(angle)
+                        y = center.y + major_axis.y * math.sin(angle) * ratio
+                        points.append((x, y))
+                    loops_with_entities.append({'points': points, 'entities': [entity]})
                 elif entity.dxftype() == 'SPLINE':
-                    # For splines, try to get control points or sample points
-                    try:
-                        points = []
-                        if hasattr(entity, 'control_points'):
-                            for cp in entity.control_points:
-                                points.append((float(cp.x), float(cp.y)))
-                        
-                        if len(points) > 2:
-                            paths.append(points)
-                            print(f"Added SPLINE with {len(points)} points")
-                    except:
-                        pass
-                
-                elif entity.dxftype() == 'LINE':
-                    # For individual lines, we'll collect them and try to connect later
-                    try:
-                        start = entity.dxf.start
-                        end = entity.dxf.end
-                        # Store as a 2-point path for now
-                        points = [(float(start.x), float(start.y)), (float(end.x), float(end.y))]
-                        # Only add if it's a significant line (not a tiny segment)
-                        length = math.sqrt((end.x - start.x)**2 + (end.y - start.y)**2)
-                        if length > 0.001:  # Minimum length threshold
-                            paths.append(points)
-                            print(f"Added LINE with length {length:.3f}")
-                    except Exception as e:
-                        print(f"Error processing LINE: {e}")
-                
-                elif entity.dxftype() == 'ARC':
-                    # Convert arc to polyline
-                    try:
-                        center = entity.dxf.center
-                        radius = entity.dxf.radius
-                        start_angle = math.radians(entity.dxf.start_angle)
-                        end_angle = math.radians(entity.dxf.end_angle)
-                        
-                        # Normalize angles
-                        if end_angle < start_angle:
-                            end_angle += 2 * math.pi
-                        
-                        # Create points along the arc
-                        points = []
-                        num_segments = max(8, int((end_angle - start_angle) * 18 / math.pi))  # At least 8 segments
-                        
-                        for i in range(num_segments + 1):
-                            angle = start_angle + (end_angle - start_angle) * i / num_segments
-                            x = center.x + radius * math.cos(angle)
-                            y = center.y + radius * math.sin(angle)
-                            points.append((float(x), float(y)))
-                        
-                        if len(points) > 1:
-                            paths.append(points)
-                            print(f"Added ARC with {len(points)} points, radius {radius:.3f}")
-                    except Exception as e:
-                        print(f"Error processing ARC: {e}")
-                
+                    if entity.is_closed:
+                        pts = [(float(cp.x), float(cp.y)) for cp in entity.control_points]
+                        loops_with_entities.append({'points': pts, 'entities': [entity]})
             except Exception as e:
-                print(f"Error processing entity {entity.dxftype()}: {e}")
+                print(f"Error processing entity {entity.dxftype()} for path extraction: {e}")
                 continue
-        
-        print(f"Total paths extracted: {len(paths)}")
-        
-        # Try to connect individual segments into closed loops
-        if paths:
-            connected_loops = self._connect_segments_to_loops(paths)
-            print(f"Connected {len(connected_loops)} loops from segments")
-            return connected_loops
-        
-        return paths
+        if not loops_with_entities:
+            print("No closed polylines/circles/ellipses/splines found, trying graph-based loop detection for LINE/ARC...")
+            loops_with_entities = self._find_loops_from_lines_arcs(entities)
+        print(f"Extracted {len(loops_with_entities)} loops with their entities")
+        if loops_with_entities:
+            loops_with_entities.sort(key=lambda item: self._calculate_polygon_area(item['points']), reverse=True)
+            self.all_loops = [item['points'] for item in loops_with_entities]
+            self.outer_loop = self.all_loops[0] if self.all_loops else None
+            self.inner_loops = self.all_loops[1:] if len(self.all_loops) > 1 else []
+            self.mandrel_paths.clear()
+            inner_loop_entities = [item['entities'] for item in loops_with_entities[1:]]
+            for i, entities_list in enumerate(inner_loop_entities, 1):
+                self.mandrel_paths[f'mandrel_{i}'] = entities_list
+            print(f"Outer loop has {len(self.outer_loop)} points, {len(self.inner_loops)} inner loops")
+        else:
+            print("No loops detected, will try fallback method")
     
-    def _connect_segments_to_loops(self, segments: List[List[Tuple[float, float]]]) -> List[List[Tuple[float, float]]]:
-        """Try to connect individual segments into closed loops."""
-        if not segments:
-            return []
-        
-        # Separate already-closed paths from individual segments
-        closed_paths = []
-        individual_segments = []
-        
-        for segment in segments:
-            if len(segment) > 2:
-                # Check if it's already a closed path
-                start = segment[0]
-                end = segment[-1]
-                distance = math.sqrt((end[0] - start[0])**2 + (end[1] - start[1])**2)
-                if distance < 0.1:  # Close enough to be considered closed
-                    closed_paths.append(segment)
-                else:
-                    individual_segments.append(segment)
-            else:
-                individual_segments.append(segment)
-        
-        print(f"Found {len(closed_paths)} already closed paths, {len(individual_segments)} individual segments")
-        
-        # Try to connect individual segments
-        tolerance = 1.0  # Connection tolerance
-        connected_loops = []
-        used_segments = set()
-        
-        for i, start_segment in enumerate(individual_segments):
-            if i in used_segments:
-                continue
-            
-            # Start a new potential loop
-            current_loop = list(start_segment)
-            used_segments.add(i)
-            
-            # Try to find connecting segments
-            max_iterations = len(individual_segments)
-            iterations = 0
-            
-            while iterations < max_iterations:
-                iterations += 1
-                found_connection = False
-                current_end = current_loop[-1]
-                
-                # Look for a segment that starts near our current end
-                for j, candidate in enumerate(individual_segments):
-                    if j in used_segments:
-                        continue
-                    
-                    candidate_start = candidate[0]
-                    candidate_end = candidate[-1]
-                    
-                    # Check if candidate starts near our end
-                    dist_to_start = math.sqrt((current_end[0] - candidate_start[0])**2 + 
-                                            (current_end[1] - candidate_start[1])**2)
-                    
-                    # Check if candidate ends near our end (reverse connection)
-                    dist_to_end = math.sqrt((current_end[0] - candidate_end[0])**2 + 
-                                          (current_end[1] - candidate_end[1])**2)
-                    
-                    if dist_to_start < tolerance:
-                        # Connect forward
-                        current_loop.extend(candidate[1:])  # Skip first point to avoid duplication
-                        used_segments.add(j)
-                        found_connection = True
-                        break
-                    elif dist_to_end < tolerance:
-                        # Connect reverse
-                        reversed_candidate = list(reversed(candidate))
-                        current_loop.extend(reversed_candidate[1:])  # Skip first point
-                        used_segments.add(j)
-                        found_connection = True
-                        break
-                
-                if not found_connection:
-                    break
-            
-            # Check if we have a closed loop
-            if len(current_loop) > 3:
-                start_point = current_loop[0]
-                end_point = current_loop[-1]
-                closing_distance = math.sqrt((end_point[0] - start_point[0])**2 + 
-                                           (end_point[1] - start_point[1])**2)
-                
-                if closing_distance < tolerance * 2:  # Allow slightly larger tolerance for closing
-                    # Close the loop
-                    current_loop.append(start_point)
-                    connected_loops.append(current_loop)
-                    print(f"Connected loop with {len(current_loop)} points, closing distance: {closing_distance:.3f}")
-        
-        # Combine closed paths and connected loops
-        all_loops = closed_paths + connected_loops
-        
-        # Sort by area (largest first)
-        if all_loops:
-            all_loops.sort(key=lambda loop: self._calculate_polygon_area(loop), reverse=True)
-        
-        return all_loops
+    def _find_loops_from_lines_arcs(self, entities):
+        edges = []
+        entity_points = {}
+        decimal_precision = 4
+        def rounded_point(x, y):
+            return (round(x, decimal_precision), round(y, decimal_precision))
+        for e in entities:
+            if e.dxftype() == "LINE":
+                start = rounded_point(e.dxf.start.x, e.dxf.start.y)
+                end = rounded_point(e.dxf.end.x, e.dxf.end.y)
+                edges.append((start, end, e))
+                entity_points[e] = [start, end]
+            elif e.dxftype() == "ARC":
+                center = e.dxf.center
+                radius = e.dxf.radius
+                start_angle = math.radians(e.dxf.start_angle)
+                end_angle = math.radians(e.dxf.end_angle)
+                if end_angle < start_angle:
+                    end_angle += 2 * math.pi
+                arc_points = []
+                for angle in range(0, 101):
+                    theta = start_angle + (end_angle - start_angle) * (angle / 100)
+                    x = center.x + radius * math.cos(theta)
+                    y = center.y + radius * math.sin(theta)
+                    arc_points.append(rounded_point(x, y))
+                for i in range(len(arc_points) - 1):
+                    edges.append((arc_points[i], arc_points[i + 1], e))
+                entity_points[e] = arc_points
+        G = nx.Graph()
+        for start, end, e in edges:
+            G.add_edge(start, end, entity=e)
+        cycles = nx.cycle_basis(G)
+        loops_with_entities = []
+        for cycle in cycles:
+            if len(cycle) >= 3:
+                polygon = Polygon(cycle)
+                if polygon.is_valid and abs(polygon.area) > 5:  # Ignore tiny loops
+                    loop_entities = []
+                    loop_points = []
+                    used = set()
+                    for i in range(len(cycle)):
+                        pt1 = cycle[i]
+                        pt2 = cycle[(i + 1) % len(cycle)]
+                        for e in entities:
+                            if e in used:
+                                continue
+                            pts = entity_points.get(e, [])
+                            if pt1 in pts and pt2 in pts:
+                                loop_entities.append(e)
+                                used.add(e)
+                                break
+                        loop_points.append(pt1)
+                    loops_with_entities.append({'points': loop_points, 'entities': loop_entities})
+        return loops_with_entities
+
+    def _extract_closed_paths_with_entities(self, entities) -> List[Dict[str, Any]]:
+        print("Warning: _extract_closed_paths_with_entities is deprecated.")
+        return []
+
+    def _extract_closed_paths(self, entities) -> List[List[Tuple[float, float]]]:
+        print("Warning: _extract_closed_paths is deprecated.")
+        return []
     
     def _create_fallback_loop(self):
         """Create a fallback loop from the bounding box of all entities."""
@@ -632,38 +468,73 @@ class AdvancedFeatureCalculator:
         return properties
     
     def _calculate_wall_thickness(self) -> Dict[str, Any]:
-        """Calculate wall thickness properties."""
-        if not self.inner_loops:
+        if not self.inner_loops or not self.outer_loop or len(self.outer_loop) < 3:
             return {
                 'max_wall_thickness': 0,
                 'min_wall_thickness': 0,
                 'avg_wall_thickness': 0,
                 'wall_thickness_variability': 0
             }
-        
-        # Simplified wall thickness calculation
-        # In practice, you'd need more sophisticated algorithms
+
+        inner_polygons = [Polygon(inner) for inner in self.inner_loops if len(inner) >= 3]
+        if not inner_polygons:
+            return {
+                'max_wall_thickness': 0,
+                'min_wall_thickness': 0,
+                'avg_wall_thickness': 0,
+                'wall_thickness_variability': 0
+            }
+
+        outer = self.outer_loop
+        n_samples = min(200, len(outer))  
+        step = max(1, len(outer) // n_samples)
         thicknesses = []
-        
-        # Sample points around the outer loop and find distances to inner loops
-        for i in range(0, len(self.outer_loop), max(1, len(self.outer_loop) // 100)):
-            point = self.outer_loop[i]
-            min_dist = float('inf')
-            
-            for inner_loop in self.inner_loops:
-                for inner_point in inner_loop:
-                    dist = math.sqrt((point[0] - inner_point[0])**2 + (point[1] - inner_point[1])**2)
-                    min_dist = min(min_dist, dist)
-            
-            if min_dist != float('inf'):
+        for i in range(0, len(outer), step):
+            p0 = np.array(outer[i])
+            p_prev = np.array(outer[i - 1])
+            p_next = np.array(outer[(i + 1) % len(outer)])
+            tangent = p_next - p_prev
+            tangent_norm = np.linalg.norm(tangent)
+            if tangent_norm == 0:
+                continue
+            tangent = tangent / tangent_norm
+            normal = np.array([-tangent[1], tangent[0]])
+            centroid = np.mean(np.array(outer), axis=0)
+            test_point = p0 + normal * 1.0
+            dist1 = np.linalg.norm((test_point - centroid))
+            test_point2 = p0 - normal * 1.0
+            dist2 = np.linalg.norm((test_point2 - centroid))
+            if dist2 < dist1:
+                normal = -normal
+            ray_end = p0 + normal * 1e4
+            ray = LineString([tuple(p0), tuple(ray_end)])
+            min_dist = None
+            for poly in inner_polygons:
+                inter = ray.intersection(poly.boundary)
+                if inter.is_empty:
+                    continue
+                if inter.geom_type == 'Point':
+                    pts = [inter]
+                elif inter.geom_type == 'MultiPoint':
+                    pts = list(inter.geoms)
+                elif inter.geom_type == 'LineString':
+                    pts = [Point(c) for c in inter.coords]
+                else:
+                    continue
+                for pt in pts:
+                    v = np.array([pt.x, pt.y]) - p0
+                    if np.dot(v, normal) > 1e-6:
+                        d = np.linalg.norm(v)
+                        if min_dist is None or d < min_dist:
+                            min_dist = d
+            if min_dist is not None:
                 thicknesses.append(min_dist)
-        
         if thicknesses:
             return {
-                'max_wall_thickness': max(thicknesses),
-                'min_wall_thickness': min(thicknesses),
-                'avg_wall_thickness': sum(thicknesses) / len(thicknesses),
-                'wall_thickness_variability': np.std(thicknesses)
+                'max_wall_thickness': float(np.max(thicknesses)),
+                'min_wall_thickness': float(np.min(thicknesses)),
+                'avg_wall_thickness': float(np.mean(thicknesses)),
+                'wall_thickness_variability': float(np.std(thicknesses))
             }
         else:
             return {
@@ -674,20 +545,15 @@ class AdvancedFeatureCalculator:
             }
     
     def _calculate_moments_of_inertia(self) -> Dict[str, Any]:
-        """Calculate moments of inertia."""
-        # Simplified calculation using polygon approximation
         points = np.array(self.outer_loop)
         centroid = self._calculate_centroid(self.outer_loop)
         
-        # Translate to centroid
         points_centered = points - centroid
         
-        # Calculate second moments
         Ix = np.sum(points_centered[:, 1] ** 2)
         Iy = np.sum(points_centered[:, 0] ** 2)
         Ixy = np.sum(points_centered[:, 0] * points_centered[:, 1])
         
-        # Polar moment of inertia
         Ip = Ix + Iy
         
         return {
@@ -820,7 +686,8 @@ class AdvancedFeatureCalculator:
         """Calculate features for each mandrel (inner loop)."""
         mandrel_features = {}
         
-        for i, mandrel in enumerate(self.inner_loops[:4], 1):  # Up to 4 mandrels
+        for i, mandrel in enumerate(self.inner_loops, 1): 
+            key = f'mandrel_{i}'
             area = self._calculate_polygon_area(mandrel)
             perimeter = self._calculate_polygon_perimeter(mandrel)
             
@@ -846,7 +713,7 @@ class AdvancedFeatureCalculator:
             # Thickness standard deviations (simplified)
             thickness_std = self._calculate_mandrel_thickness_std(mandrel)
             
-            mandrel_features[f'mandrel_{i}'] = {
+            mandrel_features[key] = {
                 'area': area,
                 'perimeter': perimeter,
                 'compactness': compactness,
