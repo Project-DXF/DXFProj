@@ -145,9 +145,39 @@ class DXFProfileAnalyzer(QMainWindow):
         
     def export_pdf(self):
         pass
+    
+    def open_dxf_file(self):
+        """Open and process a DXF file"""
+        try:
+            options = QFileDialog.Options()
+            options |= QFileDialog.DontUseNativeDialog
+            
+            file_name, _ = QFileDialog.getOpenFileName(
+                self,
+                "Open DXF File",
+                "",  # Start in current directory
+                "DXF Files (*.dxf);;All Files (*)",
+                options=options
+            )
+            
+            if file_name:
+                print(f"Selected file: {file_name}")  # Debug output
+                if os.path.exists(file_name):
+                    # Process the DXF file
+                    self.statusBar().showMessage(f"Processing {file_name}...")
+                    # Your DXF processing code here
+                    return True
+                else:
+                    QMessageBox.warning(self, "Error", f"File not found: {file_name}")
+                    
+            return False
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
+            return False
 
 def main():
     app = QApplication(sys.argv)
     window = DXFProfileAnalyzer()
     window.show()
-    sys.exit(app.exec_()) 
+    sys.exit(app.exec_())
